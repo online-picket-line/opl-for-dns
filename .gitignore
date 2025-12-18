@@ -1,0 +1,33 @@
+# Build artifacts
+*.o
+*.so
+*.a
+*.dylib
+*.dll
+*.lo
+*.la
+.libs/
+.deps/
+
+# Build directories
+build/
+dist/
+bin/
+lib/
+
+# Editor files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+*.iml
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.log
+core
