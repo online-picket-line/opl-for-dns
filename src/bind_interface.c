@@ -7,6 +7,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <curl/curl.h>
 
 #include <isc/mem.h>
 #include <isc/result.h>
@@ -26,6 +27,9 @@
 
 /* Plugin instance */
 static opl_context_t *plugin_ctx = NULL;
+
+/* CURL initialization flag */
+static int curl_initialized = 0;
 
 /* Plugin version information */
 const char *plugin_version = OPL_PLUGIN_VERSION;
@@ -126,6 +130,12 @@ isc_result_t plugin_register(const char *parameters, const void *cfg, const char
     UNUSED(lctx);
     UNUSED(actx);
     
+    /* Initialize CURL globally (thread-safe, done once) */
+    if (!curl_initialized) {
+        curl_global_init(CURL_GLOBAL_DEFAULT);
+        curl_initialized = 1;
+    }
+    
     /* Initialize plugin context */
     result = opl_plugin_init(&plugin_ctx, mctx, NULL);
     if (result != ISC_R_SUCCESS) {
@@ -154,6 +164,12 @@ isc_result_t plugin_register(const char *parameters, const void *cfg, const char
 void plugin_destroy(void **instp) {
     if (instp != NULL && *instp != NULL) {
         opl_plugin_destroy((opl_context_t **)instp);
+    }
+    
+    /* Cleanup CURL globally when plugin is unloaded */
+    if (curl_initialized) {
+        curl_global_cleanup();
+        curl_initialized = 0;
     }
 }
 

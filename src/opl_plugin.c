@@ -50,6 +50,14 @@ static size_t curl_write_callback(void *contents, size_t size, size_t nmemb, voi
     return realsize;
 }
 
+/* URL encode a string for safe use in query parameters */
+static char *url_encode(CURL *curl, const char *str) {
+    if (curl == NULL || str == NULL) {
+        return NULL;
+    }
+    return curl_easy_escape(curl, str, 0);
+}
+
 /* Initialize plugin */
 isc_result_t opl_plugin_init(opl_context_t **ctxp, isc_mem_t *mctx, const char *config_file) {
     opl_context_t *ctx;
@@ -75,8 +83,8 @@ isc_result_t opl_plugin_init(opl_context_t **ctxp, isc_mem_t *mctx, const char *
     
     /* TODO: Parse config file if provided */
     
-    /* Initialize CURL */
-    curl_global_init(CURL_GLOBAL_DEFAULT);
+    /* Note: curl_global_init() is called once globally by the plugin loader,
+     * not here in the per-instance init function to avoid thread-safety issues */
     
     *ctxp = ctx;
     return ISC_R_SUCCESS;
@@ -99,8 +107,8 @@ void opl_plugin_destroy(opl_context_t **ctxp) {
         free(ctx->config.block_page_ip);
     }
     
-    /* Cleanup CURL */
-    curl_global_cleanup();
+    /* Note: curl_global_cleanup() is called once globally by the plugin unloader,
+     * not here in the per-instance destroy function to avoid thread-safety issues */
     
     isc_mem_put(ctx->mctx, ctx, sizeof(*ctx));
     *ctxp = NULL;
@@ -121,10 +129,10 @@ isc_result_t opl_check_domain(opl_context_t *ctx, const char *domain, char **dis
     
     /* Initialize response */
     response.data = malloc(1);
+    if (response.data == NULL) {
+        return ISC_R_NOMEMORY;
+    }
     response.size = 0;
-    
-    /* Build URL */
-    snprintf(url, sizeof(url), "%s?domain=%s", ctx->config.api_endpoint, domain);
     
     /* Initialize CURL request */
     curl = curl_easy_init();
@@ -132,6 +140,16 @@ isc_result_t opl_check_domain(opl_context_t *ctx, const char *domain, char **dis
         free(response.data);
         return ISC_R_FAILURE;
     }
+    
+    /* Build URL with properly encoded domain */
+    char *encoded_domain = url_encode(curl, domain);
+    if (encoded_domain == NULL) {
+        curl_easy_cleanup(curl);
+        free(response.data);
+        return ISC_R_FAILURE;
+    }
+    snprintf(url, sizeof(url), "%s?domain=%s", ctx->config.api_endpoint, encoded_domain);
+    curl_free(encoded_domain);
     
     curl_easy_setopt(curl, CURLOPT_URL, url);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_callback);
@@ -239,9 +257,37 @@ isc_result_t opl_modify_response(opl_context_t *ctx, dns_message_t *message, con
     rdata.rdclass = dns_rdataclass_in;
     rdata.type = dns_rdatatype_a;
     
-    /* Note: This is a simplified version. In a real plugin, you would need to
-     * properly construct the rdataset with the BIND 9 API, which involves more
-     * complex memory management and data structure manipulation. */
+    /* IMPLEMENTATION NOTE:
+     * This is a simplified implementation showing the structure. A complete
+     * production implementation would need to:
+     * 
+     * 1. Create a proper dns_rdatalist_t and populate it
+     * 2. Use dns_rdatalist_tordataset() to convert to rdataset
+     * 3. Add the rdataset to the message's answer section using dns_message_addname()
+     * 4. Set appropriate TTL values
+     * 5. Handle memory allocation through BIND's memory context
+     * 
+     * Example structure:
+     *   dns_rdatalist_t *rdatalist;
+     *   dns_rdata_t *rdata_item;
+     *   
+     *   rdatalist = isc_mem_get(message->mctx, sizeof(*rdatalist));
+     *   dns_rdatalist_init(rdatalist);
+     *   rdatalist->type = dns_rdatatype_a;
+     *   rdatalist->rdclass = dns_rdataclass_in;
+     *   rdatalist->ttl = 300;
+     *   
+     *   rdata_item = isc_mem_get(message->mctx, sizeof(*rdata_item));
+     *   dns_rdata_init(rdata_item);
+     *   // ... populate rdata_item with IP address data
+     *   ISC_LIST_APPEND(rdatalist->rdata, rdata_item, link);
+     *   
+     *   result = dns_rdatalist_tordataset(rdatalist, rdataset);
+     *   // ... add to message answer section
+     * 
+     * The complexity of BIND 9's internal DNS message construction API makes
+     * this beyond the scope of a minimal implementation example.
+     */
     
     return ISC_R_SUCCESS;
 }
