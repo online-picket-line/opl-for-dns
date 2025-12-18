@@ -76,7 +76,18 @@ isc_result_t opl_plugin_init(opl_context_t **ctxp, isc_mem_t *mctx, const char *
     
     /* Initialize default configuration */
     ctx->config.api_endpoint = strdup(DEFAULT_API_ENDPOINT);
+    if (ctx->config.api_endpoint == NULL) {
+        isc_mem_put(mctx, ctx, sizeof(*ctx));
+        return ISC_R_NOMEMORY;
+    }
+    
     ctx->config.block_page_ip = strdup(DEFAULT_BLOCK_PAGE_IP);
+    if (ctx->config.block_page_ip == NULL) {
+        free(ctx->config.api_endpoint);
+        isc_mem_put(mctx, ctx, sizeof(*ctx));
+        return ISC_R_NOMEMORY;
+    }
+    
     ctx->config.api_timeout = DEFAULT_API_TIMEOUT;
     ctx->config.cache_ttl = DEFAULT_CACHE_TTL;
     ctx->config.enabled = 1;
@@ -148,8 +159,17 @@ isc_result_t opl_check_domain(opl_context_t *ctx, const char *domain, char **dis
         free(response.data);
         return ISC_R_FAILURE;
     }
-    snprintf(url, sizeof(url), "%s?domain=%s", ctx->config.api_endpoint, encoded_domain);
+    
+    int url_len = snprintf(url, sizeof(url), "%s?domain=%s", 
+                           ctx->config.api_endpoint, encoded_domain);
     curl_free(encoded_domain);
+    
+    /* Check for buffer overflow */
+    if (url_len < 0 || url_len >= (int)sizeof(url)) {
+        curl_easy_cleanup(curl);
+        free(response.data);
+        return ISC_R_FAILURE;
+    }
     
     curl_easy_setopt(curl, CURLOPT_URL, url);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_callback);
@@ -214,7 +234,13 @@ static int parse_ipv4(const char *ip_str, unsigned char *ip_bytes) {
     return 0;
 }
 
-/* Modify DNS response to point to block page */
+/* Modify DNS response to point to block page
+ * 
+ * WARNING: This function is incomplete and serves as a framework/example.
+ * It does NOT actually modify the DNS response in its current state.
+ * A production implementation would need to properly construct and add
+ * DNS records using BIND 9's internal APIs.
+ */
 isc_result_t opl_modify_response(opl_context_t *ctx, dns_message_t *message, const char *domain) {
     dns_name_t *qname;
     dns_rdataset_t *rdataset;

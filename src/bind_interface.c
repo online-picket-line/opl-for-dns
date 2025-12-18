@@ -130,7 +130,11 @@ isc_result_t plugin_register(const char *parameters, const void *cfg, const char
     UNUSED(lctx);
     UNUSED(actx);
     
-    /* Initialize CURL globally (thread-safe, done once) */
+    /* Initialize CURL globally (thread-safe, done once)
+     * NOTE: This has a potential race condition in multi-threaded environments.
+     * In production, this should use pthread_once() or a similar mechanism
+     * to ensure thread-safe initialization. BIND 9 typically loads plugins
+     * in a single-threaded context during startup, which mitigates this risk. */
     if (!curl_initialized) {
         curl_global_init(CURL_GLOBAL_DEFAULT);
         curl_initialized = 1;

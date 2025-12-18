@@ -2,9 +2,19 @@
 
 A DNS plugin for BIND 9 that integrates with the Online Picket Line API to detect and notify users about websites involved in labor disputes.
 
+## ⚠️ Important Note
+
+This is a **reference implementation** and **framework** for building a BIND 9 DNS plugin. The DNS response modification functionality is currently incomplete and requires additional implementation to fully redirect DNS queries. The plugin successfully:
+- Hooks into BIND 9's query processing
+- Queries the Online Picket Line API
+- Detects disputed domains
+- Logs dispute information
+
+However, the actual DNS response modification needs to be completed using BIND 9's internal APIs for production use. See the implementation notes in `src/opl_plugin.c` for details.
+
 ## Overview
 
-The OPL DNS Plugin intercepts DNS queries and checks them against the Online Picket Line API. When a domain is found to be involved in a labor dispute, the plugin modifies the DNS response to point to a block page that:
+The OPL DNS Plugin intercepts DNS queries and checks them against the Online Picket Line API. When a domain is found to be involved in a labor dispute, the plugin is designed to modify the DNS response to point to a block page that:
 
 - Informs users about the labor dispute
 - Provides details about workers' concerns
@@ -15,11 +25,12 @@ This enables digital solidarity with workers by making labor disputes visible at
 ## Features
 
 - **Real-time API Integration**: Queries the Online Picket Line API for each DNS request
-- **Transparent Redirection**: Seamlessly redirects disputed domains to an informational block page
+- **Transparent Redirection**: Framework for redirecting disputed domains to an informational block page
 - **User Choice**: Users can choose to learn more, go back, or continue to the original site
 - **Configurable**: Flexible configuration for API endpoints, timeouts, and block page IP
 - **Caching**: Built-in caching to minimize API calls and improve performance
 - **Logging**: Comprehensive logging through BIND 9's logging system
+- **Security**: URL encoding, proper error handling, and fail-open behavior
 
 ## Requirements
 
