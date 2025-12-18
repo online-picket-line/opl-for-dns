@@ -74,7 +74,12 @@ isc_result_t opl_plugin_init(opl_context_t **ctxp, isc_mem_t *mctx, const char *
     memset(ctx, 0, sizeof(*ctx));
     ctx->mctx = mctx;
     
-    /* Initialize default configuration */
+    /* Initialize default configuration 
+     * NOTE: Using strdup() for string allocation instead of isc_mem_get() for simplicity.
+     * In a production implementation, all memory should be allocated through the
+     * BIND memory context (isc_mem_get/isc_mem_put) for proper tracking and cleanup.
+     * This mixed approach is acceptable for this reference implementation but should
+     * be unified in production code. */
     ctx->config.api_endpoint = strdup(DEFAULT_API_ENDPOINT);
     if (ctx->config.api_endpoint == NULL) {
         isc_mem_put(mctx, ctx, sizeof(*ctx));
