@@ -20,7 +20,7 @@
 #include "opl_plugin.h"
 
 /* Default configuration values */
-#define DEFAULT_API_ENDPOINT "https://api.onlinepicketline.org/v1/check"
+#define DEFAULT_API_ENDPOINT "https://api.onlinepicketline.org/api/blocklist"
 #define DEFAULT_BLOCK_PAGE_IP "127.0.0.1"
 #define DEFAULT_API_TIMEOUT 5
 #define DEFAULT_CACHE_TTL 300
@@ -136,86 +136,97 @@ isc_result_t opl_check_domain(opl_context_t *ctx, const char *domain, char **dis
     CURLcode res;
     struct curl_response response;
     char url[1024];
-    json_object *root, *disputed_obj, *info_obj;
+    json_object *root = NULL, *blocklist = NULL, *entry = NULL, *employer = NULL, *reason = NULL;
     int is_disputed = 0;
-    
+    size_t i, n;
+
     if (ctx == NULL || domain == NULL || !ctx->config.enabled) {
         return ISC_R_INVALIDARG;
     }
-    
+
     /* Initialize response */
     response.data = malloc(1);
     if (response.data == NULL) {
         return ISC_R_NOMEMORY;
     }
     response.size = 0;
-    
+
     /* Initialize CURL request */
     curl = curl_easy_init();
     if (curl == NULL) {
         free(response.data);
         return ISC_R_FAILURE;
     }
-    
-    /* Build URL with properly encoded domain */
-    char *encoded_domain = url_encode(curl, domain);
-    if (encoded_domain == NULL) {
-        curl_easy_cleanup(curl);
-        free(response.data);
-        return ISC_R_FAILURE;
-    }
-    
-    int url_len = snprintf(url, sizeof(url), "%s?domain=%s", 
-                           ctx->config.api_endpoint, encoded_domain);
-    curl_free(encoded_domain);
-    
-    /* Check for buffer overflow */
+
+    /* Build URL for unified endpoint (JSON format) */
+    int url_len = snprintf(url, sizeof(url), "%s?format=json", ctx->config.api_endpoint);
     if (url_len < 0 || url_len >= (int)sizeof(url)) {
         curl_easy_cleanup(curl);
         free(response.data);
         return ISC_R_FAILURE;
     }
-    
+
     curl_easy_setopt(curl, CURLOPT_URL, url);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_callback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&response);
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, ctx->config.api_timeout);
     curl_easy_setopt(curl, CURLOPT_USERAGENT, "OPL-DNS-Plugin/" OPL_PLUGIN_VERSION);
-    
+
     /* Perform request */
     res = curl_easy_perform(curl);
     curl_easy_cleanup(curl);
-    
+
     if (res != CURLE_OK) {
         free(response.data);
         return ISC_R_FAILURE;
     }
-    
+
     /* Parse JSON response */
     root = json_tokener_parse(response.data);
     free(response.data);
-    
+
     if (root == NULL) {
         return ISC_R_FAILURE;
     }
-    
-    /* Check if domain is disputed */
-    if (json_object_object_get_ex(root, "disputed", &disputed_obj)) {
-        is_disputed = json_object_get_boolean(disputed_obj);
-    }
-    
-    /* Get dispute info if available */
-    if (is_disputed && dispute_info != NULL) {
-        if (json_object_object_get_ex(root, "info", &info_obj)) {
-            const char *info_str = json_object_get_string(info_obj);
-            if (info_str != NULL) {
-                *dispute_info = strdup(info_str);
+
+    /* Find blocklist array */
+    if (json_object_object_get_ex(root, "blocklist", &blocklist) && json_object_is_type(blocklist, json_type_array)) {
+        n = json_object_array_length(blocklist);
+        for (i = 0; i < n; ++i) {
+            entry = json_object_array_get_idx(blocklist, i);
+            if (!entry) continue;
+            json_object *url_obj = NULL;
+            if (json_object_object_get_ex(entry, "url", &url_obj)) {
+                const char *url_str = json_object_get_string(url_obj);
+                if (url_str && strstr(url_str, domain) != NULL) {
+                    is_disputed = 1;
+                    if (dispute_info != NULL) {
+                        /* Compose info string from employer and reason */
+                        const char *employer_str = NULL, *reason_str = NULL;
+                        if (json_object_object_get_ex(entry, "employer", &employer)) {
+                            employer_str = json_object_get_string(employer);
+                        }
+                        if (json_object_object_get_ex(entry, "reason", &reason)) {
+                            reason_str = json_object_get_string(reason);
+                        }
+                        size_t info_len = 0;
+                        if (employer_str) info_len += strlen(employer_str);
+                        if (reason_str) info_len += strlen(reason_str);
+                        info_len += 4; /* for separators and null */
+                        char *info = malloc(info_len);
+                        if (info) {
+                            snprintf(info, info_len, "%s: %s", employer_str ? employer_str : "", reason_str ? reason_str : "");
+                            *dispute_info = info;
+                        }
+                    }
+                    break;
+                }
             }
         }
     }
-    
+
     json_object_put(root);
-    
+
     return is_disputed ? ISC_R_SUCCESS : ISC_R_NOTFOUND;
 }
 
