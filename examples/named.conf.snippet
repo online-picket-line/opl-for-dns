@@ -1,0 +1,16 @@
+# Example BIND 9 named.conf snippet for OPL DNS Plugin
+#
+# Add these lines to your named.conf to load the OPL DNS plugin
+
+# Load the plugin
+plugin opl-dns-plugin "/usr/lib/bind9/modules/opl-dns-plugin.so" {
+    # Optional: Specify configuration file
+    # config "/etc/bind/opl-plugin.conf";
+};
+
+# Example zone configuration
+# The plugin will intercept queries for all zones
+zone "example.com" {
+    type master;
+    file "/etc/bind/zones/example.com.zone";
+};

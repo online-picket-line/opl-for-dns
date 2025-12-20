@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Labor Dispute Notice - Online Picket Line</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+            max-width: 600px;
+            width: 100%;
+            padding: 40px;
+        }
+        
+        .icon {
+            text-align: center;
+            font-size: 60px;
+            margin-bottom: 20px;
+        }
+        
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 20px;
+            font-size: 28px;
+        }
+        
+        .alert-box {
+            background: #fff3cd;
+            border: 2px solid #ffc107;
+            border-radius: 5px;
+            padding: 20px;
+            margin-bottom: 25px;
+        }
+        
+        .alert-box h2 {
+            color: #856404;
+            font-size: 20px;
+            margin-bottom: 10px;
+        }
+        
+        .alert-box p {
+            color: #856404;
+            line-height: 1.6;
+        }
+        
+        .info-section {
+            margin-bottom: 25px;
+        }
+        
+        .info-section h3 {
+            color: #667eea;
+            font-size: 18px;
+            margin-bottom: 10px;
+        }
+        
+        .info-section p {
+            color: #666;
+            line-height: 1.6;
+            margin-bottom: 10px;
+        }
+        
+        .dispute-details {
+            background: #f8f9fa;
+            border-left: 4px solid #667eea;
+            padding: 15px;
+            margin: 15px 0;
+        }
+        
+        .dispute-details strong {
+            color: #333;
+        }
+        
+        .buttons {
+            display: flex;
+            gap: 15px;
+            margin-top: 30px;
+        }
+        
+        .btn {
+            flex: 1;
+            padding: 15px 25px;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            text-decoration: none;
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn-secondary {
+            background: #e9ecef;
+            color: #333;
+        }
+        
+        .btn-secondary:hover {
+            background: #dee2e6;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+        }
+        
+        .footer {
+            text-align: center;
+            margin-top: 25px;
+            padding-top: 25px;
+            border-top: 1px solid #dee2e6;
+            color: #6c757d;
+            font-size: 14px;
+        }
+        
+        .footer a {
+            color: #667eea;
+            text-decoration: none;
+        }
+        
+        .footer a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="icon">⚠️</div>
+        <h1>Labor Dispute Notice</h1>
+        
+        <div class="alert-box">
+            <h2>This site is involved in a labor dispute</h2>
+            <p>The Online Picket Line has identified that this website is connected to an organization currently involved in a labor dispute.</p>
+        </div>
+        
+        <div class="info-section">
+            <h3>What does this mean?</h3>
+            <p>Workers at this organization are engaged in labor action such as a strike, boycott, or other dispute. By continuing to this site, you may be crossing a digital picket line.</p>
+        </div>
+        
+        <div class="dispute-details" id="dispute-info">
+            <strong>Dispute Information:</strong>
+            <p id="info-text">Loading dispute details...</p>
+        </div>
+        
+        <div class="info-section">
+            <h3>What are my options?</h3>
+            <p><strong>Learn More:</strong> Find out more about the labor dispute and workers' concerns before deciding to proceed.</p>
+            <p><strong>Go Back:</strong> Return to the previous page and consider alternative options that respect workers' rights.</p>
+            <p><strong>Continue Anyway:</strong> Proceed to the website, acknowledging the ongoing labor dispute.</p>
+        </div>
+        
+        <div class="buttons">
+            <a href="https://onlinepicketline.org/disputes" class="btn btn-primary" target="_blank">Learn More</a>
+            <button onclick="window.history.back()" class="btn btn-secondary">Go Back</button>
+            <button onclick="continueToSite()" class="btn btn-secondary">Continue Anyway</button>
+        </div>
+        
+        <div class="footer">
+            <p>Powered by <a href="https://onlinepicketline.org" target="_blank">Online Picket Line</a></p>
+            <p>Digital solidarity with workers everywhere</p>
+        </div>
+    </div>
+    
+    <script>
+        // Get dispute information from URL parameters
+        function getDisputeInfo() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const domain = urlParams.get('domain');
+            const info = urlParams.get('info');
+            
+            if (info) {
+                document.getElementById('info-text').textContent = decodeURIComponent(info);
+            } else if (domain) {
+                document.getElementById('info-text').textContent = 
+                    'Workers at ' + domain + ' are engaged in labor action. Please support their efforts by learning more about their concerns.';
+            } else {
+                document.getElementById('info-text').textContent = 
+                    'This website is connected to an organization with an active labor dispute.';
+            }
+        }
+        
+        // Continue to the original site
+        function continueToSite() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const domain = urlParams.get('domain');
+            
+            if (domain) {
+                // Set a flag to bypass the block for this session
+                sessionStorage.setItem('opl-bypass-' + domain, 'true');
+                // Redirect to the original domain
+                window.location.href = 'http://' + domain;
+            } else {
+                alert('Unable to determine the original destination.');
+            }
+        }
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', getDisputeInfo);
+    </script>
+</body>
+</html>
