@@ -336,5 +336,8 @@ python mock_api.py
 ## Support
 
 For API-related questions:
-- API Documentation: https://github.com/oplfun/online-picketline/blob/main/API_DOCUMENTATION.md
-- Plugin Issues: https://github.com/oplfun/opl-for-dns/issues
+## Support
+
+For API-related questions:
+- API Documentation: https://github.com/online-picket-line/online-picket-line/blob/main/API_DOCUMENTATION.md
+- Plugin Issues: https://github.com/online-picket-line/opl-for-dns/issues
