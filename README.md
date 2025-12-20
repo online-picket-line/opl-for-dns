@@ -62,6 +62,7 @@ brew install bind libcurl json-c
 1. Clone the repository:
 ```bash
 git clone https://github.com/oplfun/opl-for-dns.git
+git clone https://github.com/online-picket-line/opl-for-dns.git
 cd opl-for-dns
 ```
 
@@ -268,7 +269,8 @@ Contributions are welcome! Please feel free to submit pull requests or open issu
 ## Support
 
 For issues and questions:
-- GitHub Issues: https://github.com/oplfun/opl-for-dns/issues
+For issues and questions:
+- GitHub Issues: https://github.com/online-picket-line/opl-for-dns/issues
 - Online Picket Line: https://onlinepicketline.org
 
 ## Credits

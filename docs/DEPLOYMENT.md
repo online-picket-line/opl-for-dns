@@ -24,7 +24,7 @@ sudo apt-get install bind9 bind9-dev libcurl4-openssl-dev libjson-c-dev build-es
 ```bash
 sudo yum install bind bind-devel libcurl-devel json-c-devel gcc make
 ```
-
+git clone https://github.com/online-picket-line/opl-for-dns.git
 ### Step 2: Build and Install the Plugin
 
 ```bash
@@ -100,25 +100,16 @@ sudo cp examples/block-page.html /var/www/html/index.html
 ```bash
 sudo systemctl restart apache2  # Debian/Ubuntu
 # or
-sudo systemctl restart httpd    # RHEL/CentOS
-```
-
 ### Step 4: Configure the Plugin
 
-1. Create the plugin configuration file:
-```bash
-sudo mkdir -p /etc/bind
 sudo nano /etc/bind/opl-plugin.conf
 ```
-
-2. Add the following configuration (adjust values as needed):
-```ini
 api_endpoint = https://api.onlinepicketline.org/v1/check
 block_page_ip = 192.168.1.100
 api_timeout = 5
 cache_ttl = 300
-enabled = 1
-```
+GitHub Issues: https://github.com/online-picket-line/opl-for-dns/issues
+Documentation: https://github.com/online-picket-line/opl-for-dns/docs
 
 **Important:** Replace `192.168.1.100` with the actual IP address of your block page server.
 
