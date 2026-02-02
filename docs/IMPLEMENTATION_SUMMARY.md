@@ -1,182 +1,201 @@
 # Implementation Summary
 
-## Project: OPL DNS Plugin for BIND 9
+## Project: OPL DNS Server for Online Picket Line
 
-This document summarizes the implementation of a BIND 9 DNS plugin framework for the Online Picket Line (OPL) labor dispute detection system.
+This document summarizes the implementation of a Go-based DNS server that integrates with the Online Picket Line API to block domains involved in labor disputes.
 
-## What Was Implemented
+## Architecture Overview
 
-### 1. Core Plugin Infrastructure ✅
-- **File**: `src/bind_interface.c`
-- **Functionality**: BIND 9 plugin interface layer that hooks into the DNS query processing pipeline
-- **Key Features**:
-  - Plugin registration and initialization
-  - Query hook implementation (NS_QUERY_RESPOND_ANY)
-  - Domain name extraction from DNS queries
-  - Integration with BIND 9's logging system
-  - Thread-safe CURL initialization (with documented limitations)
+The OPL DNS Server is a standalone application that combines:
 
-### 2. API Client Module ✅
-- **File**: `src/opl_plugin.c`
-- **Functionality**: HTTP client for querying the Online Picket Line API
-- **Key Features**:
-  - libcurl-based HTTP requests
-  - URL encoding for domain parameters (security)
-  - JSON response parsing with json-c
-  - Comprehensive error handling
-  - NULL pointer checks throughout
-  - Buffer overflow protection
-  - Fail-open behavior to prevent DNS disruption
+1. **DNS Server**: Intercepts DNS queries and blocks disputed domains
+2. **Web Server**: Serves block pages and handles bypass requests
+3. **Session Manager**: Tracks bypass tokens for users who choose to continue
+4. **API Client**: Fetches and caches blocklist data from Online Picket Line
 
-### 3. DNS Response Modification Framework ⚠️
-- **File**: `src/opl_plugin.c` (opl_modify_response function)
-- **Status**: Framework/skeleton implementation
-- **What's Included**:
-  - Function structure and error handling
-  - IP address parsing
-  - DNS message structure access
-  - Detailed implementation notes
-- **What's Missing**:
-  - Actual DNS record construction using BIND 9 APIs
-  - Addition of modified records to DNS response
-  - Complete rdataset manipulation
+## Implementation Details
 
-### 4. Plugin Header and API ✅
-- **File**: `include/opl_plugin.h`
-- **Contents**:
-  - Configuration structure
-  - Plugin context structure
-  - Function prototypes
-  - Version information
+### 1. DNS Server (`pkg/dns`)
 
-### 5. User Interface ✅
-- **File**: `examples/block-page.html`
-- **Type**: Responsive HTML/CSS/JavaScript page
-- **Features**:
-  - Modern, professional design
-  - Clear labor dispute messaging
-  - Three user action options (Learn More, Go Back, Continue)
-  - Dynamic content loading from URL parameters
-  - Session storage for bypass flag
+- Uses the `miekg/dns` library for DNS protocol handling
+- Supports both UDP and TCP DNS queries
+- Forwards non-blocked queries to configurable upstream DNS servers
+- Returns block page IP for disputed domains (unless user has bypass)
 
-### 6. Build System ✅
-- **File**: `Makefile`
-- **Capabilities**:
-  - Compiles plugin to shared library (.so)
-  - Clean target for artifacts
-  - Install target for deployment
-  - Help documentation
+**Key Features:**
+- Concurrent query handling
+- Configurable upstream DNS servers
+- Graceful shutdown support
 
-### 7. Configuration System ✅
-- **Files**: `examples/opl-plugin.conf`, `examples/named.conf.snippet`
-- **Features**:
-  - Plugin configuration file format
-  - BIND 9 integration example
-  - Configurable API endpoint, block page IP, timeouts, caching
+### 2. API Client (`pkg/api`)
 
-### 8. Documentation ✅
-- **README.md**: Comprehensive guide with:
-  - Implementation status (clearly marked as framework)
-  - Features and requirements
-  - Build and installation instructions
-  - Configuration guide
-  - Usage examples
-  - Troubleshooting section
-  
-- **docs/API.md**: API integration documentation with:
-  - Request/response formats
-  - Error handling
-  - Caching behavior
-  - Privacy considerations
-  - Mock API implementation example
-  
-- **docs/DEPLOYMENT.md**: Deployment guide with:
-  - Step-by-step installation
-  - Production considerations
-  - Monitoring setup
-  - Security hardening
-  - Rollback procedures
+- HTTP client for the Online Picket Line `/api/blocklist.json` endpoint
+- Hash-based caching to minimize bandwidth usage
+- Domain lookup with parent domain matching (e.g., `www.example.com` matches `example.com`)
 
-## Security Measures Implemented
+**Key Features:**
+- Conditional fetching using `X-Content-Hash`
+- Automatic blocklist refresh
+- Thread-safe access to cached data
 
-1. **URL Encoding**: Prevents URL injection attacks
-2. **NULL Pointer Checks**: Prevents crashes from allocation failures
-3. **Buffer Overflow Protection**: Validates URL construction length
-4. **Fail-Open Design**: DNS continues working if API is unavailable
-5. **Thread-Safe Initialization**: CURL global init/cleanup (with documented limitations)
-6. **Input Validation**: Domain name and configuration validation
+### 3. Block Page Server (`pkg/blockpage`)
 
-## Known Limitations (Documented)
+- HTTP server serving block page HTML
+- Two display modes: "block" (full page) and "overlay"
+- REST API for bypass token management
 
-1. **DNS Response Modification**: Framework only - requires completion for production
-2. **Thread-Safety**: CURL initialization has potential race condition (documented)
-3. **Memory Management**: Mixed use of strdup/free and isc_mem (documented)
-4. **Configuration Parsing**: TODO - currently uses hardcoded defaults
-5. **Caching**: Structure present but not fully implemented
+**Endpoints:**
+- `GET /` - Block page
+- `GET/POST /api/bypass` - Create bypass token
+- `GET /api/check` - Check domain status
+- `GET /health` - Health check
 
-## File Statistics
+### 4. Session Manager (`pkg/session`)
 
-- Total Files: 11
-- Source Code: 2 files (426 lines)
-- Header Files: 1 file (47 lines)
-- Documentation: 3 files (comprehensive)
-- Examples: 3 files
-- Build System: 1 Makefile
+- In-memory session storage for bypass tokens
+- HMAC-signed tokens to prevent tampering
+- Automatic cleanup of expired sessions
 
-## Code Quality
+**Security Features:**
+- Token tied to client IP and domain
+- Cryptographic signature verification
+- Configurable TTL (default: 24 hours)
 
-- Comprehensive error handling
-- Defensive programming with NULL checks
-- Clear code comments and documentation
-- Security-conscious design
-- Honest documentation of limitations
+### 5. Configuration (`pkg/config`)
 
-## Testing Performed
+- JSON-based configuration file
+- Duration parsing (e.g., "5m", "24h")
+- Validation of required fields
 
-1. ✅ Syntax validation of HTML block page
-2. ✅ Visual verification of block page design
-3. ✅ Makefile structure validation
-4. ✅ Documentation review
-5. ⚠️ Compilation testing (dependencies not available in environment)
+## User Flow
 
-## Next Steps for Production Use
+```
+User → DNS Query → OPL DNS Server
+                        ↓
+            Is domain blocked?
+                   ↓ Yes
+            Has bypass token?
+                   ↓ No
+            Return block page IP
+                   ↓
+User → Block Page → Options:
+    - Learn More → External URL
+    - Go Back → Previous page
+    - Continue → Create bypass token → Redirect to site
+```
 
-To make this production-ready, the following would need to be completed:
+## Technology Choices
 
-1. **Complete DNS Response Modification**:
-   - Implement proper rdatalist construction
-   - Add records to DNS message answer section
-   - Test with actual BIND 9 server
+### Why Go Instead of BIND 9 Plugin?
 
-2. **Improve Thread Safety**:
-   - Use pthread_once() for CURL initialization
-   - Add proper synchronization
+1. **Session Management**: Go's built-in concurrency makes session tracking straightforward
+2. **Single Binary**: Easier deployment than BIND 9 plugin
+3. **Web Integration**: Natural integration with web server
+4. **Modern Tooling**: Better testing, debugging, and maintenance
+5. **Cross-Platform**: Works on Linux, macOS, Windows
 
-3. **Unify Memory Management**:
-   - Use BIND memory context throughout
-   - Remove mixed malloc/free usage
+### Why miekg/dns?
 
-4. **Implement Configuration Parsing**:
-   - Parse configuration file
-   - Validate configuration values
+- Most popular DNS library for Go
+- Full DNS protocol support
+- Active maintenance
+- Used by CoreDNS and other major projects
 
-5. **Add Testing**:
-   - Unit tests for API client
-   - Integration tests with BIND 9
-   - Load testing
+## File Structure
 
-6. **Implement Caching**:
-   - Complete cache implementation
-   - Add cache expiration logic
+```
+opl-for-dns/
+├── cmd/opl-dns/
+│   └── main.go              # Application entry point
+├── pkg/
+│   ├── api/
+│   │   ├── client.go        # API client implementation
+│   │   └── client_test.go   # API client tests
+│   ├── blockpage/
+│   │   ├── server.go        # Block page web server
+│   │   ├── server_test.go   # Web server tests
+│   │   ├── templates/
+│   │   │   ├── block.html   # Full-page block template
+│   │   │   └── overlay.html # Overlay template
+│   │   └── static/
+│   │       └── styles.css   # Static assets
+│   ├── config/
+│   │   ├── config.go        # Configuration management
+│   │   └── config_test.go   # Configuration tests
+│   ├── dns/
+│   │   ├── server.go        # DNS server implementation
+│   │   └── server_test.go   # DNS server tests
+│   └── session/
+│       ├── manager.go       # Session management
+│       └── manager_test.go  # Session tests
+├── deploy/
+│   └── opl-dns.service      # Systemd service file
+├── docs/
+│   ├── API.md               # API documentation
+│   ├── DEPLOYMENT.md        # Deployment guide
+│   └── IMPLEMENTATION_SUMMARY.md
+├── config.example.json      # Example configuration
+├── go.mod                   # Go module definition
+├── go.sum                   # Go module checksums
+└── README.md                # Project documentation
+```
+
+## Testing
+
+All packages have comprehensive unit tests:
+
+```bash
+go test ./... -v
+```
+
+Test coverage includes:
+- Configuration parsing and validation
+- API client with mock HTTP server
+- Session token creation and validation
+- Block page endpoints
+- DNS server initialization
+
+## Security Measures
+
+1. **Token Security**: HMAC-SHA256 signed tokens
+2. **Input Validation**: Domain normalization, IP validation
+3. **Fail-Open**: DNS continues working if API is unavailable
+4. **Privilege Separation**: Service runs as non-root user
+5. **Systemd Hardening**: ProtectSystem, NoNewPrivileges, etc.
+
+## Performance Characteristics
+
+- **DNS Query Latency**: Minimal overhead for non-blocked domains
+- **Blocklist Caching**: In-memory cache with configurable refresh
+- **Session Storage**: O(1) lookup for bypass checks
+- **Memory Usage**: Proportional to active sessions
+
+## Future Enhancements
+
+Potential improvements:
+- [ ] Redis backend for session storage (multi-server deployments)
+- [ ] Prometheus metrics endpoint
+- [ ] DNS-over-HTTPS (DoH) support
+- [ ] DNS-over-TLS (DoT) support
+- [ ] Web admin interface
+- [ ] Blocklist filtering by action type
+- [ ] Custom block page theming
+
+## Legacy Code
+
+The original BIND 9 plugin code (`src/`) is preserved for reference but is no longer the recommended approach. It demonstrated the concept but had limitations:
+- Incomplete DNS response modification
+- Complex BIND 9 API integration
+- No session management capability
 
 ## Conclusion
 
-This implementation provides a solid, well-documented framework for a BIND 9 DNS plugin that integrates with the Online Picket Line API. The plugin successfully:
+The Go-based OPL DNS Server provides a complete, production-ready solution for DNS-level labor action awareness. It successfully:
 
-- ✅ Hooks into BIND 9's query processing
-- ✅ Queries an external API
-- ✅ Parses and handles API responses
-- ✅ Implements security best practices
-- ✅ Includes comprehensive documentation
-
-The DNS response modification functionality is architected but requires completion using BIND 9's complex internal APIs. The codebase is clean, well-commented, and ready to serve as a foundation for a production implementation.
+- ✅ Blocks disputed domains
+- ✅ Serves informational block pages
+- ✅ Allows user bypass with token tracking
+- ✅ Supports two display modes (block/overlay)
+- ✅ Integrates with Online Picket Line API
+- ✅ Includes comprehensive tests
+- ✅ Provides deployment documentation

@@ -1,288 +1,315 @@
-# Deployment Guide for OPL DNS Plugin
+# Deployment Guide
 
-This guide provides step-by-step instructions for deploying the OPL DNS Plugin in various environments.
+This guide provides detailed instructions for deploying the OPL DNS Server on Ubuntu 24.04.
 
 ## Prerequisites
 
-Before deploying, ensure you have:
-- Root or sudo access to the DNS server
-- BIND 9 (version 9.11+) installed
-- Network connectivity to the Online Picket Line API
-- A web server for hosting the block page
+- Ubuntu 24.04 LTS (or compatible Linux distribution)
+- Root or sudo access
+- Public IP address (for external access)
+- Go 1.21 or later (for building from source)
 
-## Deployment Steps
+## Quick Installation
 
-### Step 1: Install Dependencies
-
-#### On Debian/Ubuntu:
-```bash
-sudo apt-get update
-sudo apt-get install bind9 bind9-dev libcurl4-openssl-dev libjson-c-dev build-essential
-```
-
-#### On RHEL/CentOS:
-```bash
-sudo yum install bind bind-devel libcurl-devel json-c-devel gcc make
-```
-
-### Step 2: Build and Install the Plugin
+### 1. Build from Source
 
 ```bash
-# Clone the repository
-git clone https://github.com/oplfun/opl-for-dns.git
+# Install Go (if not already installed)
+sudo apt update
+sudo apt install -y golang-go git
+
+# Clone and build
+git clone https://github.com/online-picket-line/opl-for-dns.git
 cd opl-for-dns
-
-# Build the plugin
-make
-
-# Install the plugin (requires root)
-sudo make install
+go build -o opl-dns ./cmd/opl-dns
 ```
 
-### Step 3: Set Up the Block Page Server
+### 2. Configure
 
-You need a web server to host the block page. This can be on the same server as BIND or a separate server.
-
-#### Option A: Using Nginx
-
-1. Install nginx:
 ```bash
-sudo apt-get install nginx  # Debian/Ubuntu
-# or
-sudo yum install nginx      # RHEL/CentOS
+# Create directories
+sudo mkdir -p /etc/opl-dns /var/lib/opl-dns
+
+# Copy and edit configuration
+sudo cp config.example.json /etc/opl-dns/config.json
+sudo nano /etc/opl-dns/config.json
 ```
 
-2. Copy the block page:
+**Required Configuration Changes:**
+
+1. Set `dns.block_page_ip` to your server's public IP
+2. Set `web.external_url` to your server's public URL
+3. Set `session.secret` to a secure random string (generate with: `openssl rand -hex 32`)
+4. Optionally set `api.api_key` if you have an Online Picket Line API key
+
+### 3. Install Binary
+
 ```bash
-sudo mkdir -p /var/www/opl-block-page
-sudo cp examples/block-page.html /var/www/opl-block-page/index.html
+sudo cp opl-dns /usr/local/bin/
+sudo chmod +x /usr/local/bin/opl-dns
 ```
 
-3. Configure nginx (`/etc/nginx/sites-available/opl-block-page`):
+### 4. Create Service User
+
+```bash
+sudo useradd -r -s /bin/false -d /var/lib/opl-dns opl-dns
+sudo chown -R opl-dns:opl-dns /var/lib/opl-dns
+```
+
+### 5. Install Systemd Service
+
+```bash
+sudo cp deploy/opl-dns.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable opl-dns
+sudo systemctl start opl-dns
+```
+
+### 6. Verify Installation
+
+```bash
+# Check service status
+sudo systemctl status opl-dns
+
+# Check logs
+sudo journalctl -u opl-dns -f
+
+# Test DNS resolution
+dig @localhost example.com
+
+# Test block page
+curl http://localhost:8080/health
+```
+
+## Firewall Configuration
+
+Open the required ports:
+
+```bash
+# DNS (UDP and TCP)
+sudo ufw allow 53/udp
+sudo ufw allow 53/tcp
+
+# Block page web server
+sudo ufw allow 8080/tcp
+
+# Enable firewall
+sudo ufw enable
+```
+
+## HTTPS Setup (Recommended for Production)
+
+For production deployments, use a reverse proxy with HTTPS:
+
+### Using Nginx
+
+```bash
+sudo apt install -y nginx certbot python3-certbot-nginx
+```
+
+Create `/etc/nginx/sites-available/opl-dns`:
+
 ```nginx
 server {
-    listen 80 default_server;
-    listen [::]:80 default_server;
-    
-    root /var/www/opl-block-page;
-    index index.html;
-    
-    server_name _;
+    listen 80;
+    server_name dns.yourdomain.com;
     
     location / {
-        try_files $uri $uri/ /index.html;
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
     }
 }
 ```
 
-4. Enable the site:
+Enable and get SSL certificate:
+
 ```bash
-sudo ln -s /etc/nginx/sites-available/opl-block-page /etc/nginx/sites-enabled/
+sudo ln -s /etc/nginx/sites-available/opl-dns /etc/nginx/sites-enabled/
 sudo nginx -t
-sudo systemctl restart nginx
+sudo systemctl reload nginx
+sudo certbot --nginx -d dns.yourdomain.com
 ```
 
-#### Option B: Using Apache
-
-1. Install Apache:
-```bash
-sudo apt-get install apache2  # Debian/Ubuntu
-# or
-sudo yum install httpd        # RHEL/CentOS
+Then update your config.json:
+```json
+{
+  "web": {
+    "listen_addr": "127.0.0.1:8080",
+    "external_url": "https://dns.yourdomain.com"
+  }
+}
 ```
 
-2. Copy the block page:
-```bash
-sudo cp examples/block-page.html /var/www/html/index.html
-```
+## High Availability Setup
 
-3. Restart Apache:
-```bash
-sudo systemctl restart apache2  # Debian/Ubuntu
-# or
-sudo systemctl restart httpd    # RHEL/CentOS
-```
+For production environments, consider:
 
-### Step 4: Configure the Plugin
+### Multiple DNS Servers
 
-1. Create the plugin configuration file:
-```bash
-sudo mkdir -p /etc/bind
-sudo nano /etc/bind/opl-plugin.conf
-```
+Deploy the OPL DNS server on multiple machines for redundancy:
 
-2. Add the following configuration (adjust values as needed):
-```ini
-api_endpoint = https://api.onlinepicketline.org/v1/check
-block_page_ip = 192.168.1.100
-api_timeout = 5
-cache_ttl = 300
-enabled = 1
-```
+1. Deploy to multiple VPS instances
+2. Use DNS load balancing or anycast
+3. Share configuration across instances
 
-**Important:** Replace `192.168.1.100` with the actual IP address of your block page server.
+### Health Monitoring
 
-### Step 5: Configure BIND 9
+Set up monitoring using the `/health` endpoint:
 
-1. Edit the BIND configuration file:
-```bash
-sudo nano /etc/bind/named.conf
-```
-
-2. Add the plugin configuration:
-```
-plugin opl-dns-plugin "/usr/lib/bind9/modules/opl-dns-plugin.so" {
-    config "/etc/bind/opl-plugin.conf";
-};
-```
-
-3. Verify the BIND configuration:
-```bash
-sudo named-checkconf
-```
-
-### Step 6: Start/Restart BIND 9
-
-```bash
-sudo systemctl restart bind9    # Debian/Ubuntu
-# or
-sudo systemctl restart named    # RHEL/CentOS
-```
-
-### Step 7: Verify the Installation
-
-1. Check BIND logs for plugin loading:
-```bash
-sudo journalctl -u bind9 -f | grep OPL
-```
-
-You should see a message like:
-```
-OPL DNS Plugin v1.0.0 loaded successfully
-```
-
-2. Test DNS resolution with a test domain:
-```bash
-dig @localhost test-domain.com
-```
-
-3. Check if the API is accessible:
-```bash
-curl "https://api.onlinepicketline.org/v1/check?domain=test.com"
-```
-
-## Production Considerations
-
-### High Availability
-
-For production deployments, consider:
-
-1. **Multiple DNS Servers**: Deploy the plugin on multiple BIND servers for redundancy
-2. **Load Balancing**: Use anycast or round-robin DNS for load distribution
-3. **API Caching**: Increase `cache_ttl` to reduce API load
-4. **Local API Mirror**: Consider running a local mirror of the OPL API for better performance
-
-### Monitoring
-
-Set up monitoring for:
-
-1. **BIND Health**: Monitor BIND process and query response times
-2. **Plugin Logs**: Set up log aggregation for plugin activity
-3. **API Availability**: Monitor connectivity to the OPL API
-4. **Block Page Availability**: Monitor the web server hosting the block page
-
-Example monitoring script:
 ```bash
 #!/bin/bash
-# Check if BIND is running
-if ! systemctl is-active --quiet bind9; then
-    echo "BIND is not running!"
-    exit 1
-fi
+# /etc/cron.d/opl-dns-health
 
-# Check API connectivity
-if ! curl -s -f "https://api.onlinepicketline.org/v1/check?domain=test.com" > /dev/null; then
-    echo "Cannot reach OPL API!"
-    exit 1
-fi
-
-echo "All systems operational"
-exit 0
+*/5 * * * * root curl -sf http://localhost:8080/health || systemctl restart opl-dns
 ```
 
-### Security
+### Log Rotation
 
-1. **Firewall Rules**: Only allow necessary traffic to the block page server
-2. **HTTPS**: Consider using HTTPS for the block page (requires SSL certificate)
-3. **API Authentication**: If the OPL API requires authentication, configure it in the plugin
-4. **Log Rotation**: Set up log rotation to prevent disk space issues
+Configure logrotate for the journal:
 
-### Performance Tuning
+```bash
+sudo journalctl --vacuum-time=30d
+```
 
-1. **Increase Cache TTL**: For better performance, increase the cache TTL:
+## Performance Tuning
+
+### Increase Cache TTL
+
+For better performance with lower API usage:
+
+```json
+{
+  "dns": {
+    "cache_ttl": "1h"
+  },
+  "api": {
+    "refresh_interval": "30m"
+  }
+}
+```
+
+### Resource Limits
+
+Add resource limits to the systemd service:
+
 ```ini
-cache_ttl = 3600  # 1 hour
+[Service]
+MemoryMax=512M
+CPUQuota=50%
 ```
 
-2. **Adjust API Timeout**: Balance between responsiveness and reliability:
-```ini
-api_timeout = 3  # Faster timeout for better DNS performance
-```
+## Security Hardening
 
-3. **BIND Worker Threads**: Increase BIND worker threads if handling high query volume
+### 1. Run as Non-Root
 
-## Updating the Plugin
+The systemd service already runs as the `opl-dns` user with minimal privileges.
 
-To update the plugin:
+### 2. Restrict Network Access
 
 ```bash
-cd opl-for-dns
-git pull
-make clean
-make
-sudo make install
-sudo systemctl restart bind9
+# Only allow DNS from internal network
+sudo iptables -A INPUT -p udp --dport 53 -s 192.168.0.0/16 -j ACCEPT
+sudo iptables -A INPUT -p udp --dport 53 -j DROP
 ```
 
-## Rollback Procedure
+### 3. Enable Rate Limiting
 
-If you need to disable or remove the plugin:
+Consider adding rate limiting at the firewall level:
 
-1. Comment out the plugin line in `/etc/bind/named.conf`:
-```
-# plugin opl-dns-plugin "/usr/lib/bind9/modules/opl-dns-plugin.so";
-```
-
-2. Restart BIND:
 ```bash
-sudo systemctl restart bind9
+sudo iptables -A INPUT -p udp --dport 53 -m limit --limit 100/sec -j ACCEPT
+sudo iptables -A INPUT -p udp --dport 53 -j DROP
 ```
 
-3. To completely remove:
+### 4. Secure the Secret
+
+Ensure the configuration file has proper permissions:
+
 ```bash
-sudo rm /usr/lib/bind9/modules/opl-dns-plugin.so
-sudo rm /etc/bind/opl-plugin.conf
+sudo chmod 600 /etc/opl-dns/config.json
+sudo chown root:opl-dns /etc/opl-dns/config.json
 ```
 
 ## Troubleshooting
 
-### Plugin fails to load
-- Check file permissions: `sudo chmod 644 /usr/lib/bind9/modules/opl-dns-plugin.so`
-- Verify BIND version supports plugins: `named -V`
-- Check for missing dependencies: `ldd /usr/lib/bind9/modules/opl-dns-plugin.so`
+### DNS Server Not Starting
 
-### DNS queries not being modified
-- Verify plugin is enabled in config: `enabled = 1`
-- Check if domain is actually disputed via API
-- Review BIND logs for errors
+```bash
+# Check if port 53 is already in use
+sudo ss -tulpn | grep :53
 
-### Performance issues
-- Increase `api_timeout` to prevent timeouts
-- Increase `cache_ttl` to reduce API calls
-- Consider deploying local API mirror
+# Disable systemd-resolved if conflicting
+sudo systemctl stop systemd-resolved
+sudo systemctl disable systemd-resolved
+```
 
-## Support
+### Block Page Not Loading
 
-For deployment assistance:
-- GitHub Issues: https://github.com/oplfun/opl-for-dns/issues
-- Documentation: https://github.com/oplfun/opl-for-dns/docs
+```bash
+# Check web server is running
+curl http://localhost:8080/health
+
+# Check firewall
+sudo ufw status
+
+# Check logs
+sudo journalctl -u opl-dns --since "1 hour ago"
+```
+
+### Blocklist Not Loading
+
+```bash
+# Check API connectivity
+curl -H "User-Agent: OPL-DNS-Server/1.0.0" \
+  "https://onlinepicketline.com/api/blocklist.json"
+
+# Check logs for API errors
+sudo journalctl -u opl-dns | grep -i "blocklist"
+```
+
+### High Memory Usage
+
+If memory usage is high:
+
+1. Reduce `session.token_ttl` to clean up sessions faster
+2. Reduce `session.cleanup_interval` for more frequent cleanup
+3. Add memory limits to systemd service
+
+## Updating
+
+To update to a new version:
+
+```bash
+cd opl-for-dns
+git pull
+go build -o opl-dns ./cmd/opl-dns
+sudo cp opl-dns /usr/local/bin/
+sudo systemctl restart opl-dns
+```
+
+## Backup and Recovery
+
+### Configuration Backup
+
+```bash
+sudo cp /etc/opl-dns/config.json /backup/opl-dns-config.json
+```
+
+### Session Data
+
+Session data is stored in memory and is lost on restart. This is by design - bypass tokens expire after 24 hours anyway.
+
+## Uninstallation
+
+```bash
+sudo systemctl stop opl-dns
+sudo systemctl disable opl-dns
+sudo rm /etc/systemd/system/opl-dns.service
+sudo rm /usr/local/bin/opl-dns
+sudo rm -rf /etc/opl-dns
+sudo rm -rf /var/lib/opl-dns
+sudo userdel opl-dns
+```

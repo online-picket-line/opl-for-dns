@@ -15,6 +15,14 @@ dist/
 bin/
 lib/
 
+# Go binaries
+opl-dns
+*.exe
+
+# Configuration (may contain secrets)
+config.json
+!config.example.json
+
 # Editor files
 *.swp
 *.swo

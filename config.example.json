@@ -1,0 +1,33 @@
+{
+  "dns": {
+    "listen_addr": "0.0.0.0:53",
+    "upstream_dns": [
+      "8.8.8.8:53",
+      "8.8.4.4:53"
+    ],
+    "block_page_ip": "127.0.0.1",
+    "cache_ttl": "5m0s",
+    "query_timeout": "5s"
+  },
+  "api": {
+    "base_url": "https://onlinepicketline.com/api",
+    "api_key": "",
+    "refresh_interval": "15m0s",
+    "timeout": "10s"
+  },
+  "web": {
+    "listen_addr": "0.0.0.0:8080",
+    "external_url": "http://localhost:8080",
+    "display_mode": "block",
+    "static_dir": "./static"
+  },
+  "session": {
+    "token_ttl": "24h0m0s",
+    "secret": "change-this-to-a-secure-random-string",
+    "cleanup_interval": "1h0m0s"
+  },
+  "logging": {
+    "level": "info",
+    "format": "text"
+  }
+}
