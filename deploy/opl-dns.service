@@ -1,0 +1,29 @@
+[Unit]
+Description=Online Picket Line DNS Server
+Documentation=https://github.com/online-picket-line/opl-for-dns
+After=network.target
+
+[Service]
+Type=simple
+User=opl-dns
+Group=opl-dns
+ExecStart=/usr/local/bin/opl-dns -config /etc/opl-dns/config.json
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadOnlyPaths=/
+ReadWritePaths=/var/lib/opl-dns
+
+# Allow binding to privileged ports (53)
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+
+[Install]
+WantedBy=multi-user.target
