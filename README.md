@@ -1,276 +1,320 @@
-# OPL DNS Plugin for BIND 9
+# OPL DNS Server - Online Picket Line
 
-A DNS plugin for BIND 9 that integrates with the Online Picket Line API to detect and notify users about websites involved in labor disputes.
+[![Go Version](https://img.shields.io/badge/Go-1.21+-00ADD8?style=flat&logo=go)](https://go.dev/)
+[![License](https://img.shields.io/badge/License-ISC-blue.svg)](LICENSE)
 
-## ⚠️ Important Note
+A DNS server that integrates with the [Online Picket Line](https://onlinepicketline.com) to help users stay informed about labor actions and boycotts. When a user attempts to access a website involved in a labor dispute, the DNS server redirects them to an informational block page where they can:
 
-This is a **reference implementation** and **framework** for building a BIND 9 DNS plugin. The DNS response modification functionality is currently incomplete and requires additional implementation to fully redirect DNS queries. The plugin successfully:
-- Hooks into BIND 9's query processing
-- Queries the Online Picket Line API
-- Detects disputed domains
-- Logs dispute information
-
-However, the actual DNS response modification needs to be completed using BIND 9's internal APIs for production use. See the implementation notes in `src/opl_plugin.c` for details.
-
-## Overview
-
-The OPL DNS Plugin intercepts DNS queries and checks them against the Online Picket Line API. When a domain is found to be involved in a labor dispute, the plugin is designed to modify the DNS response to point to a block page that:
-
-- Informs users about the labor dispute
-- Provides details about workers' concerns
-- Gives users the option to learn more, go back, or continue to the site
+- **Learn more** about the labor action
+- **Go back** to the previous page
+- **Continue anyway** with a bypass token (valid for 24 hours)
 
 This enables digital solidarity with workers by making labor disputes visible at the DNS level.
 
 ## Features
 
-- **Real-time API Integration**: Queries the Online Picket Line API for each DNS request
-- **Transparent Redirection**: Framework for redirecting disputed domains to an informational block page
-- **User Choice**: Users can choose to learn more, go back, or continue to the original site
-- **Configurable**: Flexible configuration for API endpoints, timeouts, and block page IP
-- **Caching**: Built-in caching to minimize API calls and improve performance
-- **Logging**: Comprehensive logging through BIND 9's logging system
-- **Security**: URL encoding, proper error handling, and fail-open behavior
+- 🚧 **Real-time Labor Action Detection**: Integrates with the Online Picket Line API
+- 🔄 **Session-Based Bypass**: Users can choose to continue, receiving a 24-hour bypass token
+- 📱 **Two Display Modes**: Block page or overlay style (matching the browser plugin)
+- 🔒 **Secure Token System**: HMAC-signed bypass tokens prevent tampering
+- ⚡ **High Performance**: Efficient caching, upstream DNS forwarding
+- 🐳 **Easy Deployment**: Single binary, systemd service, or Docker
 
-## Requirements
+## Quick Start
 
-- BIND 9 (version 9.11 or later with plugin support)
-- libcurl (for API requests)
-- json-c (for JSON parsing)
-- C compiler (gcc or clang)
+### Prerequisites
 
-### Installation of Dependencies
+- Go 1.21 or later
+- Linux (Ubuntu 24.04 recommended) or macOS
 
-#### Debian/Ubuntu
+### Installation
+
 ```bash
-sudo apt-get update
-sudo apt-get install bind9 bind9-dev libcurl4-openssl-dev libjson-c-dev build-essential
-```
-
-#### RHEL/CentOS/Fedora
-```bash
-sudo yum install bind bind-devel libcurl-devel json-c-devel gcc make
-```
-
-#### macOS
-```bash
-brew install bind libcurl json-c
-```
-
-## Building the Plugin
-
-1. Clone the repository:
-```bash
-git clone https://github.com/oplfun/opl-for-dns.git
+# Clone the repository
+git clone https://github.com/online-picket-line/opl-for-dns.git
 cd opl-for-dns
+
+# Build the server
+go build -o opl-dns ./cmd/opl-dns
+
+# Generate example configuration
+./opl-dns -generate-config
+# Edit config.example.json with your settings, then rename to config.json
+
+# Run the server (requires root for port 53)
+sudo ./opl-dns -config config.json
 ```
 
-2. Build the plugin:
-```bash
-make
-```
+### Configuration
 
-3. Install the plugin (requires root):
-```bash
-sudo make install
-```
+Create a `config.json` file (see `config.example.json`):
 
-The plugin will be installed to `/usr/lib/bind9/modules/opl-dns-plugin.so`.
-
-## Configuration
-
-### 1. Plugin Configuration File
-
-Create a configuration file at `/etc/bind/opl-plugin.conf`:
-
-```ini
-# OPL DNS Plugin Configuration
-api_endpoint = https://api.onlinepicketline.org/v1/check
-block_page_ip = 192.168.1.100
-api_timeout = 5
-cache_ttl = 300
-enabled = 1
-```
-
-**Configuration Options:**
-
-- `api_endpoint`: URL of the Online Picket Line API (default: https://api.onlinepicketline.org/v1/check)
-- `block_page_ip`: IP address where the block page is hosted (default: 127.0.0.1)
-- `api_timeout`: Timeout for API requests in seconds (default: 5)
-- `cache_ttl`: How long to cache API responses in seconds (default: 300)
-- `enabled`: Enable (1) or disable (0) the plugin (default: 1)
-
-### 2. BIND 9 Configuration
-
-Add the plugin to your BIND 9 configuration file (`/etc/bind/named.conf`):
-
-```
-plugin opl-dns-plugin "/usr/lib/bind9/modules/opl-dns-plugin.so" {
-    config "/etc/bind/opl-plugin.conf";
-};
-```
-
-### 3. Block Page Setup
-
-The block page needs to be hosted on a web server at the IP address specified in `block_page_ip`.
-
-1. Install a web server (e.g., nginx or apache)
-2. Copy the block page HTML to the web server's document root:
-```bash
-sudo cp examples/block-page.html /var/www/html/index.html
-```
-
-3. Configure the web server to serve the block page for all requests
-
-Example nginx configuration:
-```nginx
-server {
-    listen 80 default_server;
-    listen [::]:80 default_server;
-    root /var/www/html;
-    index index.html;
-    
-    location / {
-        try_files $uri $uri/ /index.html;
-    }
-}
-```
-
-### 4. Restart BIND 9
-
-After configuration, restart BIND 9:
-```bash
-sudo systemctl restart bind9
-```
-
-## API Specification
-
-The plugin expects the Online Picket Line API to respond with JSON in the following format:
-
-### Request
-```
-GET https://api.onlinepicketline.org/v1/check?domain=example.com
-```
-
-### Response
 ```json
 {
-    "disputed": true,
-    "info": "Workers at Example Corp are on strike for better wages and working conditions.",
-    "details": {
-        "organization": "Example Corp",
-        "dispute_type": "strike",
-        "start_date": "2025-01-15",
-        "workers_affected": 500
-    }
+  "dns": {
+    "listen_addr": "0.0.0.0:53",
+    "upstream_dns": ["8.8.8.8:53", "8.8.4.4:53"],
+    "block_page_ip": "YOUR_SERVER_IP",
+    "cache_ttl": "5m",
+    "query_timeout": "5s"
+  },
+  "api": {
+    "base_url": "https://onlinepicketline.com/api",
+    "api_key": "",
+    "refresh_interval": "15m",
+    "timeout": "10s"
+  },
+  "web": {
+    "listen_addr": "0.0.0.0:8080",
+    "external_url": "http://YOUR_SERVER_IP:8080",
+    "display_mode": "block"
+  },
+  "session": {
+    "token_ttl": "24h",
+    "secret": "CHANGE_THIS_TO_A_SECURE_RANDOM_STRING",
+    "cleanup_interval": "1h"
+  },
+  "logging": {
+    "level": "info",
+    "format": "text"
+  }
 }
 ```
 
-**Response Fields:**
-- `disputed` (boolean): Whether the domain is involved in a labor dispute
-- `info` (string): Human-readable information about the dispute
-- `details` (object, optional): Additional structured information
+**Important:** Replace `YOUR_SERVER_IP` with your server's public IP address, and set a secure random string for `session.secret`.
 
 ## How It Works
 
-1. **DNS Query Interception**: When a DNS query is received, the plugin hooks into BIND 9's query processing pipeline.
+1. **DNS Query Interception**: When a user's device queries a domain, the DNS server checks if it's on the blocklist.
 
-2. **API Check**: The plugin extracts the domain name and sends a request to the Online Picket Line API.
+2. **Blocklist Check**: The server maintains a cached copy of the Online Picket Line blocklist, refreshed every 15 minutes.
 
-3. **Response Modification**: If the API indicates a labor dispute:
-   - The DNS response is modified to return the block page IP instead of the original IP
-   - The query is logged with dispute information
+3. **Block or Forward**:
+   - If the domain is **blocked** and the user doesn't have a bypass token → Return the block page IP
+   - If the domain is **allowed** or user has a bypass → Forward to upstream DNS
 
-4. **User Experience**: Users requesting the disputed domain are redirected to the block page where they can:
-   - Learn about the labor dispute
-   - Choose to go back
-   - Choose to continue anyway (if they wish to cross the digital picket line)
+4. **Block Page**: Users see information about the labor action with three options:
+   - **Learn More**: Opens the action's info URL
+   - **Go Back**: Returns to previous page
+   - **Continue Anyway**: Creates a bypass token and redirects to the original site
 
-## Logging
+5. **Bypass Token**: Valid for 24 hours, stored in the server's session manager. Subsequent DNS queries from the same IP for the same domain are forwarded normally.
 
-The plugin logs its activity through BIND 9's logging system. To see plugin logs:
+## Architecture
+
+```
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│   User Device   │────▶│   OPL DNS       │────▶│  Upstream DNS   │
+│                 │     │   Server        │     │  (8.8.8.8)      │
+└─────────────────┘     └────────┬────────┘     └─────────────────┘
+                                 │
+                                 ▼
+                        ┌─────────────────┐
+                        │  Block Page     │
+                        │  Web Server     │
+                        └────────┬────────┘
+                                 │
+                                 ▼
+                        ┌─────────────────┐
+                        │  Online Picket  │
+                        │  Line API       │
+                        └─────────────────┘
+```
+
+## API Endpoints
+
+The block page server exposes the following endpoints:
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/` | GET | Serves the block page for blocked domains |
+| `/api/bypass` | GET/POST | Creates a bypass token and redirects |
+| `/api/check` | GET | Checks if a domain is blocked |
+| `/health` | GET | Health check endpoint |
+
+### Check Domain
 
 ```bash
-sudo tail -f /var/log/syslog | grep OPL
+curl "http://localhost:8080/api/check?domain=example.com"
 ```
 
-Or configure BIND 9 logging in `named.conf`:
+Response:
+```json
+{
+  "blocked": true,
+  "hasBypass": false,
+  "domain": "example.com",
+  "employer": "Example Corp",
+  "actionType": "strike",
+  "description": "Workers on strike for better wages"
+}
 ```
-logging {
-    channel opl_log {
-        file "/var/log/named/opl-plugin.log" versions 3 size 5m;
-        severity info;
-        print-time yes;
-        print-category yes;
-    };
-    category default { opl_log; };
-};
-```
 
-## Testing
+### Create Bypass
 
-### Manual Testing
-
-1. Configure the plugin with a test block page IP
-2. Restart BIND 9
-3. Test with a known disputed domain:
 ```bash
-dig @localhost disputed-domain.com
+curl -X POST "http://localhost:8080/api/bypass" \
+  -H "Content-Type: application/json" \
+  -d '{"domain": "example.com"}'
 ```
 
-4. The response should show the block page IP
+Response:
+```json
+{
+  "success": true,
+  "token": "BASE64_ENCODED_TOKEN",
+  "redirectUrl": "https://example.com",
+  "expiresIn": 86400
+}
+```
 
-### API Testing
+## Deployment
 
-Test the API integration:
+### Ubuntu 24.04 Deployment
+
 ```bash
-curl "https://api.onlinepicketline.org/v1/check?domain=example.com"
+# Install dependencies
+sudo apt update
+sudo apt install -y golang-go
+
+# Build the binary
+cd opl-for-dns
+go build -o opl-dns ./cmd/opl-dns
+
+# Install
+sudo mkdir -p /etc/opl-dns /var/lib/opl-dns
+sudo cp opl-dns /usr/local/bin/
+sudo cp config.example.json /etc/opl-dns/config.json
+# Edit /etc/opl-dns/config.json with your settings
+
+# Create service user
+sudo useradd -r -s /bin/false opl-dns
+
+# Install systemd service
+sudo cp deploy/opl-dns.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable opl-dns
+sudo systemctl start opl-dns
+
+# Check status
+sudo systemctl status opl-dns
+sudo journalctl -u opl-dns -f
 ```
 
-## Troubleshooting
+### Using as DNS Server
 
-### Plugin not loading
-- Check BIND 9 logs: `sudo journalctl -u bind9 -f`
-- Verify plugin file exists: `ls -l /usr/lib/bind9/modules/opl-dns-plugin.so`
-- Check file permissions: `sudo chmod 644 /usr/lib/bind9/modules/opl-dns-plugin.so`
+Configure your device or network to use your OPL DNS server:
 
-### API requests failing
-- Test API connectivity: `curl https://api.onlinepicketline.org/v1/check?domain=test.com`
-- Check firewall rules
-- Increase `api_timeout` in configuration
+**On Linux:**
+```bash
+# Edit /etc/resolv.conf
+nameserver YOUR_SERVER_IP
+```
 
-### DNS queries not being intercepted
-- Verify plugin is loaded: Check BIND 9 startup logs
-- Ensure `enabled = 1` in configuration
-- Check BIND 9 plugin API version compatibility
+**On macOS:**
+```bash
+# System Preferences → Network → Advanced → DNS
+# Add YOUR_SERVER_IP as a DNS server
+```
+
+**On Windows:**
+```
+# Network Settings → Change adapter options → Properties
+# Internet Protocol Version 4 → Properties
+# Use the following DNS server addresses: YOUR_SERVER_IP
+```
+
+**On Router/Firewall:**
+Configure your router to use YOUR_SERVER_IP as the DNS server to protect all devices on your network.
+
+## Display Modes
+
+### Block Mode (Default)
+
+A full-page block screen with detailed information about the labor action.
+
+### Overlay Mode
+
+A semi-transparent overlay that appears over the page (similar to the browser plugin).
+
+To use overlay mode, add `?mode=overlay` to the block page URL or set `"display_mode": "overlay"` in the configuration.
+
+## Development
+
+### Running Tests
+
+```bash
+go test ./... -v
+```
+
+### Running Locally
+
+```bash
+# Run with debug logging
+go run ./cmd/opl-dns -config config.json
+```
+
+### Project Structure
+
+```
+opl-for-dns/
+├── cmd/opl-dns/           # Main application entry point
+├── pkg/
+│   ├── api/               # Online Picket Line API client
+│   ├── blockpage/         # Block page web server
+│   ├── config/            # Configuration management
+│   ├── dns/               # DNS server implementation
+│   └── session/           # Bypass session management
+├── deploy/                # Deployment files
+├── docs/                  # Documentation
+└── config.example.json    # Example configuration
+```
+
+## Comparison with Browser Plugin
+
+| Feature | Browser Plugin | DNS Server |
+|---------|---------------|------------|
+| Device Support | Browser only | All devices |
+| Network-wide | No | Yes (via router) |
+| Installation | Per browser | Once on network |
+| Bypass Tokens | Session storage | Server-side |
+| Display Modes | Banner, Block | Block, Overlay |
+
+The DNS server provides network-wide protection, making it ideal for:
+- Protecting all devices on a home/office network
+- Mobile devices without browser extension support
+- IoT devices and smart TVs
 
 ## Security Considerations
 
-- The plugin makes external API calls for each DNS query, which could be a privacy concern
-- Consider implementing local caching or whitelisting to reduce API calls
-- The block page IP should be secured and regularly monitored
-- API requests should use HTTPS to prevent tampering
+- **HTTPS**: The block page server should be placed behind a reverse proxy (nginx, Caddy) with HTTPS in production
+- **Token Security**: The session secret should be a strong, randomly generated string
+- **Rate Limiting**: Consider adding rate limiting for the bypass endpoint
+- **Logging**: Logs include client IPs; ensure compliance with privacy regulations
 
-## Performance
+## API Integration
 
-- API calls are cached for the duration specified in `cache_ttl`
-- Failed API requests fail open (allow the query) to prevent service disruption
-- Timeout settings prevent slow API responses from affecting DNS performance
+The server integrates with the [Online Picket Line API](https://github.com/online-picket-line/online-picketline/blob/main/doc/API_DOCUMENTATION.md). It uses the `/api/blocklist.json` endpoint to fetch the list of domains involved in labor actions.
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit pull requests or open issues.
+Contributions are welcome! Please:
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes with tests
+4. Submit a pull request
 
 ## License
 
-[Add appropriate license information]
-
-## Support
-
-For issues and questions:
-- GitHub Issues: https://github.com/oplfun/opl-for-dns/issues
-- Online Picket Line: https://onlinepicketline.org
+ISC License - See [LICENSE](LICENSE) for details.
 
 ## Credits
 
-Created to support digital solidarity with workers everywhere.
+- [Online Picket Line](https://onlinepicketline.com) - The API and labor action database
+- [opl-browser-plugin](https://github.com/online-picket-line/opl-browser-plugin) - Design inspiration
+- [miekg/dns](https://github.com/miekg/dns) - DNS library for Go
+
+---
+
+✊ Digital solidarity with workers everywhere ✊
