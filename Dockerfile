@@ -3,7 +3,7 @@ FROM ubuntu:24.04
 
 # Install build dependencies
 RUN apt-get update && \
-    apt-get install -y build-essential libjson-c-dev curl pkg-config bind9-dev && \
+    apt-get install -y build-essential libjson-c-dev curl pkg-config bind9-dev git && \
     rm -rf /var/lib/apt/lists/*
 
 # Set up working directory

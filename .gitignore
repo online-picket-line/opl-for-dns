@@ -39,3 +39,6 @@ Thumbs.db
 *.tmp
 *.log
 core
+
+# CodeQL artifacts
+_codeql_detected_source_root/

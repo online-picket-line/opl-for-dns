@@ -3,7 +3,7 @@ FROM ubuntu:22.04
 
 # Install essential packages
 RUN apt-get update && \
-    apt-get install -y build-essential gcc make libjson-c-dev && \
+    apt-get install -y build-essential gcc make libjson-c-dev git && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Set up a non-root user (optional, for VS Code devcontainers best practices)
