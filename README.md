@@ -296,15 +296,6 @@ The DNS server provides network-wide protection, making it ideal for:
 
 The server integrates with the [Online Picket Line API](https://github.com/online-picket-line/online-picketline/blob/main/doc/API_DOCUMENTATION.md). It uses the `/api/blocklist.json` endpoint to fetch the list of domains involved in labor actions.
 
-## Legacy BIND 9 Plugin
-
-The legacy BIND 9 plugin code is available in the `src/` directory for reference. This was the original approach but has been superseded by the Go-based DNS server for the following reasons:
-
-- Easier session management for bypass tokens
-- Simpler deployment (single binary vs. BIND 9 plugin)
-- Better integration with the web service
-- More flexible architecture
-
 ## Contributing
 
 Contributions are welcome! Please:

@@ -181,13 +181,6 @@ Potential improvements:
 - [ ] Blocklist filtering by action type
 - [ ] Custom block page theming
 
-## Legacy Code
-
-The original BIND 9 plugin code (`src/`) is preserved for reference but is no longer the recommended approach. It demonstrated the concept but had limitations:
-- Incomplete DNS response modification
-- Complex BIND 9 API integration
-- No session management capability
-
 ## Conclusion
 
 The Go-based OPL DNS Server provides a complete, production-ready solution for DNS-level labor action awareness. It successfully:
