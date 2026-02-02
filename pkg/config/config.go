@@ -177,7 +177,57 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("parsing config file: %w", err)
 	}
 
+	// Apply environment variable overrides
+	cfg.applyEnvOverrides()
+
 	return cfg, nil
+}
+
+// applyEnvOverrides applies environment variable overrides to the config.
+// This allows Docker deployments to configure settings via environment variables.
+func (c *Config) applyEnvOverrides() {
+	// DNS settings
+	if v := os.Getenv("DNS_LISTEN_ADDR"); v != "" {
+		c.DNS.ListenAddr = v
+	}
+	if v := os.Getenv("BLOCK_PAGE_IP"); v != "" {
+		c.DNS.BlockPageIP = v
+	}
+
+	// API settings
+	if v := os.Getenv("OPL_API_BASE_URL"); v != "" {
+		c.API.BaseURL = v
+	}
+	if v := os.Getenv("OPL_API_KEY"); v != "" {
+		c.API.APIKey = v
+	}
+
+	// Web settings
+	if v := os.Getenv("WEB_LISTEN_ADDR"); v != "" {
+		c.Web.ListenAddr = v
+	}
+	if v := os.Getenv("BLOCK_PAGE_EXTERNAL_URL"); v != "" {
+		c.Web.ExternalURL = v
+	}
+	if v := os.Getenv("DISPLAY_MODE"); v != "" {
+		c.Web.DisplayMode = v
+	}
+	if v := os.Getenv("STATIC_DIR"); v != "" {
+		c.Web.StaticDir = v
+	}
+
+	// Session settings
+	if v := os.Getenv("DNS_SESSION_SECRET"); v != "" {
+		c.Session.Secret = v
+	}
+
+	// Logging settings
+	if v := os.Getenv("LOG_LEVEL"); v != "" {
+		c.Logging.Level = v
+	}
+	if v := os.Getenv("LOG_FORMAT"); v != "" {
+		c.Logging.Format = v
+	}
 }
 
 // Save saves the configuration to a JSON file.

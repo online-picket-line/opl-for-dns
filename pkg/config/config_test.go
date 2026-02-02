@@ -223,6 +223,53 @@ func TestLoadInvalidJSON(t *testing.T) {
 	}
 }
 
+func TestEnvOverrides(t *testing.T) {
+	// Create a minimal config file
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.json")
+	configContent := `{
+		"dns": {"listen_addr": "0.0.0.0:53", "upstream_dns": ["8.8.8.8:53"], "block_page_ip": "127.0.0.1"},
+		"api": {"base_url": "http://original.com/api"},
+		"web": {"listen_addr": "0.0.0.0:8080", "external_url": "http://original.com"},
+		"session": {"secret": "original-secret"},
+		"logging": {"level": "info", "format": "text"}
+	}`
+	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+		t.Fatalf("Failed to write test config: %v", err)
+	}
+
+	// Set environment variables
+	os.Setenv("BLOCK_PAGE_IP", "192.168.1.100")
+	os.Setenv("DNS_SESSION_SECRET", "env-secret")
+	os.Setenv("BLOCK_PAGE_EXTERNAL_URL", "https://test.com/block")
+	os.Setenv("OPL_API_KEY", "test-api-key")
+	defer func() {
+		os.Unsetenv("BLOCK_PAGE_IP")
+		os.Unsetenv("DNS_SESSION_SECRET")
+		os.Unsetenv("BLOCK_PAGE_EXTERNAL_URL")
+		os.Unsetenv("OPL_API_KEY")
+	}()
+
+	cfg, err := Load(configPath)
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+
+	// Verify env overrides were applied
+	if cfg.DNS.BlockPageIP != "192.168.1.100" {
+		t.Errorf("Expected block page IP '192.168.1.100', got '%s'", cfg.DNS.BlockPageIP)
+	}
+	if cfg.Session.Secret != "env-secret" {
+		t.Errorf("Expected session secret 'env-secret', got '%s'", cfg.Session.Secret)
+	}
+	if cfg.Web.ExternalURL != "https://test.com/block" {
+		t.Errorf("Expected external URL 'https://test.com/block', got '%s'", cfg.Web.ExternalURL)
+	}
+	if cfg.API.APIKey != "test-api-key" {
+		t.Errorf("Expected API key 'test-api-key', got '%s'", cfg.API.APIKey)
+	}
+}
+
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsAt(s, substr, 0))
 }

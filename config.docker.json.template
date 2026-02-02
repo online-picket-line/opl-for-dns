@@ -1,0 +1,33 @@
+{
+  "dns": {
+    "listen_addr": "0.0.0.0:53",
+    "upstream_dns": [
+      "8.8.8.8:53",
+      "8.8.4.4:53"
+    ],
+    "block_page_ip": "${BLOCK_PAGE_IP}",
+    "cache_ttl": "5m",
+    "query_timeout": "5s"
+  },
+  "api": {
+    "base_url": "http://app:3001/api",
+    "api_key": "${OPL_API_KEY}",
+    "refresh_interval": "15m",
+    "timeout": "10s"
+  },
+  "web": {
+    "listen_addr": "0.0.0.0:8080",
+    "external_url": "${BLOCK_PAGE_EXTERNAL_URL}",
+    "display_mode": "block",
+    "static_dir": "/app/static"
+  },
+  "session": {
+    "token_ttl": "24h",
+    "secret": "${DNS_SESSION_SECRET}",
+    "cleanup_interval": "1h"
+  },
+  "logging": {
+    "level": "info",
+    "format": "json"
+  }
+}

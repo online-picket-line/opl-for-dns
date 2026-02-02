@@ -28,11 +28,11 @@ type Client struct {
 
 // Blocklist represents the blocklist data from the API.
 type Blocklist struct {
-	Version     string          `json:"version"`
-	GeneratedAt string          `json:"generatedAt"`
-	TotalURLs   int             `json:"totalUrls"`
-	Employers   []Employer      `json:"employers"`
-	BlockList   []BlockListItem `json:"blocklist"`
+	Version     string
+	GeneratedAt string
+	TotalURLs   int
+	Employers   []Employer
+	BlockList   []BlockListItem
 
 	// Pre-computed domain map for fast lookups
 	domainMap map[string]*BlockListItem
@@ -47,16 +47,17 @@ type Employer struct {
 
 // BlockListItem represents a blocked URL/domain.
 type BlockListItem struct {
-	URL           string        `json:"url"`
-	Employer      string        `json:"employer"`
-	EmployerID    string        `json:"employerId"`
-	Label         string        `json:"label"`
-	Category      string        `json:"category"`
-	Reason        string        `json:"reason"`
-	StartDate     string        `json:"startDate"`
-	MoreInfoURL   string        `json:"moreInfoUrl"`
-	Location      string        `json:"location"`
-	ActionDetails ActionDetails `json:"actionDetails"`
+	URL           string
+	Domain        string
+	Employer      string
+	EmployerID    string
+	Label         string
+	Category      string
+	Reason        string
+	StartDate     string
+	MoreInfoURL   string
+	Location      string
+	ActionDetails ActionDetails
 }
 
 // ActionDetails provides detailed information about the labor action.
@@ -68,9 +69,19 @@ type ActionDetails struct {
 	StartDate    string `json:"startDate"`
 	Description  string `json:"description"`
 	Demands      string `json:"demands"`
+	Location     string `json:"location"`
 	ContactInfo  string `json:"contactInfo"`
 	UnionLogoURL string `json:"unionLogoUrl"`
 	LearnMoreURL string `json:"learnMoreUrl"`
+}
+
+// OPLBlocklistEntry represents an entry in the OPL blocklist API response.
+// The API returns a map keyed by employer name.
+type OPLBlocklistEntry struct {
+	MoreInfoURL        string        `json:"moreInfoUrl"`
+	MatchingURLRegexes []string      `json:"matchingUrlRegexes"`
+	StartTime          string        `json:"startTime"`
+	ActionDetails      ActionDetails `json:"actionDetails"`
 }
 
 // NewClient creates a new API client.
@@ -131,31 +142,90 @@ func (c *Client) FetchBlocklist(ctx context.Context) (*Blocklist, error) {
 		return nil, fmt.Errorf("reading response: %w", err)
 	}
 
-	var blocklist Blocklist
-	if err := json.Unmarshal(body, &blocklist); err != nil {
+	// Parse the OPL blocklist format (map keyed by employer name)
+	var rawBlocklist map[string]json.RawMessage
+	if err := json.Unmarshal(body, &rawBlocklist); err != nil {
 		return nil, fmt.Errorf("parsing response: %w", err)
 	}
 
-	// Build domain map for fast lookups
-	blocklist.domainMap = make(map[string]*BlockListItem)
-	for i := range blocklist.BlockList {
-		item := &blocklist.BlockList[i]
-		domain := extractDomain(item.URL)
-		if domain != "" {
-			blocklist.domainMap[strings.ToLower(domain)] = item
+	blocklist := &Blocklist{
+		GeneratedAt: time.Now().Format(time.RFC3339),
+		domainMap:   make(map[string]*BlockListItem),
+	}
+
+	employerSet := make(map[string]bool)
+
+	for employerName, rawEntry := range rawBlocklist {
+		// Skip internal fields like _optimizedPatterns
+		if strings.HasPrefix(employerName, "_") {
+			continue
+		}
+
+		var entry OPLBlocklistEntry
+		if err := json.Unmarshal(rawEntry, &entry); err != nil {
+			// Skip entries that don't match expected format
+			continue
+		}
+
+		// Add employer to set
+		if !employerSet[employerName] {
+			employerSet[employerName] = true
+			blocklist.Employers = append(blocklist.Employers, Employer{
+				ID:       entry.ActionDetails.ID,
+				Name:     employerName,
+				URLCount: len(entry.MatchingURLRegexes),
+			})
+		}
+
+		// Add each URL/domain to the blocklist
+		for _, urlPattern := range entry.MatchingURLRegexes {
+			domain := extractDomain(urlPattern)
+			if domain == "" {
+				continue
+			}
+
+			item := BlockListItem{
+				URL:         urlPattern,
+				Domain:      domain,
+				Employer:    employerName,
+				EmployerID:  entry.ActionDetails.ID,
+				Reason:      entry.ActionDetails.ActionType,
+				StartDate:   entry.ActionDetails.StartDate,
+				MoreInfoURL: entry.MoreInfoURL,
+				Location:    entry.ActionDetails.Location,
+				ActionDetails: ActionDetails{
+					ID:           entry.ActionDetails.ID,
+					Organization: entry.ActionDetails.Organization,
+					ActionType:   entry.ActionDetails.ActionType,
+					Status:       entry.ActionDetails.Status,
+					StartDate:    entry.ActionDetails.StartDate,
+					Description:  entry.ActionDetails.Description,
+					Demands:      entry.ActionDetails.Demands,
+					Location:     entry.ActionDetails.Location,
+					UnionLogoURL: entry.ActionDetails.UnionLogoURL,
+					LearnMoreURL: entry.ActionDetails.LearnMoreURL,
+				},
+			}
+
+			blocklist.BlockList = append(blocklist.BlockList, item)
+			blocklist.TotalURLs++
+
+			// Add to domain map for fast lookup
+			normalizedDomain := strings.ToLower(domain)
+			blocklist.domainMap[normalizedDomain] = &blocklist.BlockList[len(blocklist.BlockList)-1]
 		}
 	}
 
 	// Update cache
 	c.mu.Lock()
-	c.blocklist = &blocklist
+	c.blocklist = blocklist
 	c.lastFetch = time.Now()
 	if newHash := resp.Header.Get("X-Content-Hash"); newHash != "" {
 		c.contentHash = newHash
 	}
 	c.mu.Unlock()
 
-	return &blocklist, nil
+	return blocklist, nil
 }
 
 // GetCachedBlocklist returns the cached blocklist without making an API request.

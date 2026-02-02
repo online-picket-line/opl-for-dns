@@ -1,0 +1,50 @@
+# Production Dockerfile for OPL DNS Server
+# Multi-stage build for minimal image size
+
+# Build stage
+FROM golang:1.24-alpine AS builder
+
+WORKDIR /app
+
+# Install build dependencies
+RUN apk add --no-cache git ca-certificates tzdata
+
+# Copy go mod files first for better caching
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy source code
+COPY . .
+
+# Build the binary with optimizations
+# Note: Static files are embedded in the binary via go:embed
+RUN CGO_ENABLED=0 GOOS=linux go build \
+    -ldflags="-w -s -X main.version=1.0.0 -X main.buildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    -o opl-dns ./cmd/opl-dns
+
+# Runtime stage
+FROM alpine:3.21
+
+WORKDIR /app
+
+# Install runtime dependencies
+RUN apk add --no-cache ca-certificates tzdata
+
+# Create non-root user
+RUN addgroup -g 1000 opl-dns && \
+    adduser -u 1000 -G opl-dns -s /bin/sh -D opl-dns
+
+# Copy binary from builder (templates and static files are embedded)
+COPY --from=builder /app/opl-dns /usr/local/bin/opl-dns
+
+# Create data directory for sessions
+RUN mkdir -p /var/lib/opl-dns && chown opl-dns:opl-dns /var/lib/opl-dns
+
+# Expose DNS port (UDP/TCP) and web server port
+EXPOSE 53/udp 53/tcp 8080
+
+# Run as non-root user (note: needs NET_BIND_SERVICE capability for port 53)
+USER opl-dns
+
+ENTRYPOINT ["/usr/local/bin/opl-dns"]
+CMD ["-config", "/app/config.json"]

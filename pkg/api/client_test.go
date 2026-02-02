@@ -43,28 +43,16 @@ func TestFetchBlocklist(t *testing.T) {
 			t.Errorf("Expected User-Agent 'OPL-DNS-Server/1.0.0', got '%s'", r.Header.Get("User-Agent"))
 		}
 
-		// Return mock response
-		resp := Blocklist{
-			Version:     "1.0",
-			GeneratedAt: "2024-01-15T10:30:00Z",
-			TotalURLs:   2,
-			Employers: []Employer{
-				{ID: "emp-1", Name: "Test Corp", URLCount: 2},
-			},
-			BlockList: []BlockListItem{
-				{
-					URL:        "https://example.com",
-					Employer:   "Test Corp",
-					EmployerID: "emp-1",
-					ActionDetails: ActionDetails{
-						ActionType:  "strike",
-						Description: "Workers on strike",
-					},
-				},
-				{
-					URL:        "https://test.example.com",
-					Employer:   "Test Corp",
-					EmployerID: "emp-1",
+		// Return mock response in OPL format
+		resp := map[string]OPLBlocklistEntry{
+			"Test Corp": {
+				MoreInfoURL:        "https://union.org",
+				MatchingURLRegexes: []string{"example.com", "test.example.com"},
+				StartTime:          "2024-01-15T10:30:00Z",
+				ActionDetails: ActionDetails{
+					ID:          "emp-1",
+					ActionType:  "strike",
+					Description: "Workers on strike",
 				},
 			},
 		}
@@ -81,14 +69,14 @@ func TestFetchBlocklist(t *testing.T) {
 		t.Fatalf("FetchBlocklist failed: %v", err)
 	}
 
-	if blocklist.Version != "1.0" {
-		t.Errorf("Expected version '1.0', got '%s'", blocklist.Version)
-	}
 	if blocklist.TotalURLs != 2 {
 		t.Errorf("Expected 2 total URLs, got %d", blocklist.TotalURLs)
 	}
 	if len(blocklist.BlockList) != 2 {
 		t.Errorf("Expected 2 blocklist items, got %d", len(blocklist.BlockList))
+	}
+	if len(blocklist.Employers) != 1 {
+		t.Errorf("Expected 1 employer, got %d", len(blocklist.Employers))
 	}
 }
 
@@ -97,12 +85,14 @@ func TestFetchBlocklistNotModified(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		callCount++
 		if callCount == 1 {
-			// First call - return data
-			resp := Blocklist{
-				Version:   "1.0",
-				TotalURLs: 1,
-				BlockList: []BlockListItem{
-					{URL: "https://example.com", Employer: "Test"},
+			// First call - return data in OPL format
+			resp := map[string]OPLBlocklistEntry{
+				"Test": {
+					MoreInfoURL:        "https://union.org",
+					MatchingURLRegexes: []string{"example.com"},
+					ActionDetails: ActionDetails{
+						ID: "test-1",
+					},
 				},
 			}
 			w.Header().Set("X-Content-Hash", "hash123")
@@ -128,7 +118,7 @@ func TestFetchBlocklistNotModified(t *testing.T) {
 		t.Fatalf("Second fetch failed: %v", err)
 	}
 
-	if blocklist2.Version != blocklist1.Version {
+	if blocklist2.TotalURLs != blocklist1.TotalURLs {
 		t.Error("Expected same blocklist from cache")
 	}
 }
