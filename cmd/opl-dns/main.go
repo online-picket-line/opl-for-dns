@@ -109,14 +109,29 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Initial blocklist fetch
+	// Initial blocklist fetch with retries
 	logger.Info("Fetching initial blocklist...")
-	if _, err := apiClient.FetchBlocklist(ctx); err != nil {
-		logger.Warn("Error fetching initial blocklist (will retry)", "error", err)
-	} else {
-		blocklist := apiClient.GetCachedBlocklist()
-		if blocklist != nil {
-			logger.Info("Blocklist loaded", "urls", blocklist.TotalURLs, "employers", len(blocklist.Employers))
+	for attempt := 1; attempt <= 10; attempt++ {
+		if _, err := apiClient.FetchBlocklist(ctx); err != nil {
+			logger.Warn("Error fetching initial blocklist", "error", err, "attempt", attempt, "maxAttempts", 10)
+			if attempt < 10 {
+				delay := time.Duration(attempt) * 3 * time.Second
+				if delay > 30*time.Second {
+					delay = 30 * time.Second
+				}
+				logger.Info("Retrying blocklist fetch...", "delay", delay)
+				select {
+				case <-time.After(delay):
+				case <-ctx.Done():
+					break
+				}
+			}
+		} else {
+			blocklist := apiClient.GetCachedBlocklist()
+			if blocklist != nil {
+				logger.Info("Blocklist loaded", "urls", blocklist.TotalURLs, "employers", len(blocklist.Employers))
+			}
+			break
 		}
 	}
 
