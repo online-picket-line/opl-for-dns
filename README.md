@@ -3,22 +3,18 @@
 [![Go Version](https://img.shields.io/badge/Go-1.21+-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![License](https://img.shields.io/badge/License-ISC-blue.svg)](LICENSE)
 
-A DNS server that integrates with the [Online Picket Line](https://onlinepicketline.com) to help users stay informed about labor actions and boycotts. When a user attempts to access a website involved in a labor dispute, the DNS server redirects them to an informational block page where they can:
+A DNS server that integrates with the [Online Picket Line](https://onlinepicketline.com) to help users stay informed about labor actions and boycotts. When a user attempts to access a website involved in a labor dispute, the DNS server blocks the domain by returning `0.0.0.0`, preventing access to the site.
 
-- **Learn more** about the labor action
-- **Go back** to the previous page
-- **Continue anyway** with a bypass token (valid for 24 hours)
-
-This enables digital solidarity with workers by making labor disputes visible at the DNS level.
+This enables digital solidarity with workers by making labor disputes visible and actionable at the DNS level across all devices on a network.
 
 ## Features
 
-- 🚧 **Real-time Labor Action Detection**: Integrates with the Online Picket Line API
-- 🔄 **Session-Based Bypass**: Users can choose to continue, receiving a 24-hour bypass token
-- 📱 **Two Display Modes**: Block page or overlay style (matching the browser plugin)
-- 🔒 **Secure Token System**: HMAC-signed bypass tokens prevent tampering
-- ⚡ **High Performance**: Efficient caching, upstream DNS forwarding
-- 🐳 **Easy Deployment**: Single binary, systemd service, or Docker
+- 🚧 **Real-time Labor Action Detection**: Integrates with the Online Picket Line API for up-to-date blocklist
+- 🛡️ **Network-Wide Blocking**: Blocks domains across all devices on a network at the DNS level
+- ⚡ **High Performance**: Efficient caching with configurable refresh intervals, upstream DNS forwarding
+- 🔄 **Automatic Blocklist Updates**: Syncs with Online Picket Line blocklist every 15 minutes
+- 🐳 **Easy Deployment**: Single binary, systemd service, or Docker container
+- 📊 **Simple and Transparent**: No complex UIs or intermediate pages—just DNS-level blocking
 
 ## Quick Start
 
@@ -55,7 +51,6 @@ Create a `config.json` file (see `config.example.json`):
   "dns": {
     "listen_addr": "0.0.0.0:53",
     "upstream_dns": ["8.8.8.8:53", "8.8.4.4:53"],
-    "block_page_ip": "YOUR_SERVER_IP",
     "cache_ttl": "5m",
     "query_timeout": "5s"
   },
@@ -64,11 +59,6 @@ Create a `config.json` file (see `config.example.json`):
     "api_key": "",
     "refresh_interval": "15m",
     "timeout": "10s"
-  },
-  "web": {
-    "listen_addr": "0.0.0.0:8080",
-    "external_url": "http://YOUR_SERVER_IP:8080",
-    "display_mode": "block"
   },
   "session": {
     "token_ttl": "24h",
@@ -82,91 +72,63 @@ Create a `config.json` file (see `config.example.json`):
 }
 ```
 
-**Important:** Replace `YOUR_SERVER_IP` with your server's public IP address, and set a secure random string for `session.secret`.
+**Important:** Set a secure random string for `session.secret`. You can generate one with:
+```bash
+openssl rand -hex 32
+```
 
 ## How It Works
 
-1. **DNS Query Interception**: When a user's device queries a domain, the DNS server checks if it's on the blocklist.
+1. **DNS Query Reception**: When a device on the network queries a domain, the DNS server receives the request.
 
-2. **Blocklist Check**: The server maintains a cached copy of the Online Picket Line blocklist, refreshed every 15 minutes.
+2. **Blocklist Check**: The server checks if the domain is on the current blocklist fetched from the Online Picket Line API.
 
-3. **Block or Forward**:
-   - If the domain is **blocked** and the user doesn't have a bypass token → Return the block page IP
-   - If the domain is **allowed** or user has a bypass → Forward to upstream DNS
+3. **Response Decision**:
+   - If the domain is **blocked** → Return `0.0.0.0` (no host available)
+   - If the domain is **not blocked** → Forward to upstream DNS servers (e.g., 8.8.8.8)
 
-4. **Block Page**: Users see information about the labor action with three options:
-   - **Learn More**: Opens the action's info URL
-   - **Go Back**: Returns to previous page
-   - **Continue Anyway**: Creates a bypass token and redirects to the original site
+4. **User Experience**: When a user tries to access a blocked domain, their system gets `0.0.0.0` and the connection fails. This provides a clear signal that the domain is part of a labor action.
 
-5. **Bypass Token**: Valid for 24 hours, stored in the server's session manager. Subsequent DNS queries from the same IP for the same domain are forwarded normally.
+5. **Blocklist Updates**: The DNS server automatically refreshes the Online Picket Line blocklist every 15 minutes, ensuring users see the latest information about active labor actions.
 
 ## Architecture
 
 ```
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│   User Device   │────▶│   OPL DNS       │────▶│  Upstream DNS   │
-│                 │     │   Server        │     │  (8.8.8.8)      │
-└─────────────────┘     └────────┬────────┘     └─────────────────┘
-                                 │
-                                 ▼
-                        ┌─────────────────┐
-                        │  Block Page     │
-                        │  Web Server     │
-                        └────────┬────────┘
-                                 │
-                                 ▼
-                        ┌─────────────────┐
-                        │  Online Picket  │
-                        │  Line API       │
-                        └─────────────────┘
+┌─────────────────────────┐         ┌──────────────────────┐
+│   User Devices          │         │  OPL DNS Server      │
+│  (Phone, Desktop, etc)  │────────▶│                      │
+└─────────────────────────┘         │  - Check blocklist   │
+                                    │  - Cache results     │
+                                    └──────────┬───────────┘
+                                               │
+                                       ┌───────┴────────┐
+                                       │                │
+                                    Blocked?        Not Blocked?
+                                       │                │
+                                       ▼                ▼
+                                  Return             Forward to
+                                  0.0.0.0         Upstream DNS
+                                               (8.8.8.8, etc)
+                                               
+                   Every 15 minutes:
+                   
+                   OPL DNS Server ───────────► Online Picket Line API
+                    (refresh)                    (fetch blocklist)
 ```
 
-## API Endpoints
+## Testing the Server
 
-The block page server exposes the following endpoints:
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/` | GET | Serves the block page for blocked domains |
-| `/api/bypass` | GET/POST | Creates a bypass token and redirects |
-| `/api/check` | GET | Checks if a domain is blocked |
-| `/health` | GET | Health check endpoint |
-
-### Check Domain
+Once your DNS server is running, test it with:
 
 ```bash
-curl "http://localhost:8080/api/check?domain=example.com"
-```
+# Test a blocked domain (returns 0.0.0.0)
+nslookup amazon.com YOUR_SERVER_IP
 
-Response:
-```json
-{
-  "blocked": true,
-  "hasBypass": false,
-  "domain": "example.com",
-  "employer": "Example Corp",
-  "actionType": "strike",
-  "description": "Workers on strike for better wages"
-}
-```
+# Test a non-blocked domain (returns upstream DNS results)
+nslookup github.com YOUR_SERVER_IP
 
-### Create Bypass
-
-```bash
-curl -X POST "http://localhost:8080/api/bypass" \
-  -H "Content-Type: application/json" \
-  -d '{"domain": "example.com"}'
-```
-
-Response:
-```json
-{
-  "success": true,
-  "token": "BASE64_ENCODED_TOKEN",
-  "redirectUrl": "https://example.com",
-  "expiresIn": 86400
-}
+# Check server status
+journalctl -u opl-dns -f
 ```
 
 ## Deployment
@@ -228,17 +190,22 @@ nameserver YOUR_SERVER_IP
 **On Router/Firewall:**
 Configure your router to use YOUR_SERVER_IP as the DNS server to protect all devices on your network.
 
-## Display Modes
+## Use Cases
 
-### Block Mode (Default)
+The OPL DNS server is ideal for:
 
-A full-page block screen with detailed information about the labor action.
+- **Home Networks**: Protect all devices (computers, phones, tablets, IoT) on a home network
+- **Office Networks**: Implement labor action awareness across an entire workplace
+- **Community Networks**: Support labor movements with network-wide solidarity
+- **Managed Networks**: Easy to deploy via router or firewall configuration
+- **Device Agnostic**: Works on any device that can use custom DNS servers
 
-### Overlay Mode
+## Limitations & Considerations
 
-A semi-transparent overlay that appears over the page (similar to the browser plugin).
-
-To use overlay mode, add `?mode=overlay` to the block page URL or set `"display_mode": "overlay"` in the configuration.
+- **DNS Caching**: Some devices or networks may cache DNS responses. Clearing DNS cache may be needed for immediate effect
+- **VPN/Proxy Bypass**: Users can bypass DNS blocks using VPNs or proxy servers (this is intentional—we inform, not force)
+- **Configuration Complexity**: Requires server setup and network configuration knowledge
+- **No User Prompts**: Since there's no block page UI, users won't see why access failed (consider adding informational posters or documentation)
 
 ## Development
 
@@ -278,23 +245,25 @@ opl-for-dns/
 
 | Feature | Browser Plugin | DNS Server |
 |---------|---------------|------------|
-| Device Support | Browser only | All devices |
-| Network-wide | No | Yes (via router) |
-| Installation | Per browser | Once on network |
-| Bypass Tokens | Session storage | Server-side |
-| Display Modes | Banner, Block | Block, Overlay |
+| Device Support | Browser only | All devices (comprehensive) |
+| Network-wide | No | Yes (via DNS configuration) |
+| Installation | Per browser | Once on network router/firewall |
+| User Bypass | Click "Continue" button | Use VPN or proxy (manual) |
+| Block Mechanism | Overlay/banner on page | DNS returns 0.0.0.0 |
+| User Feedback | Show labor action details | Simple DNS failure (suggest docs) |
 
-The DNS server provides network-wide protection, making it ideal for:
-- Protecting all devices on a home/office network
-- Mobile devices without browser extension support
-- IoT devices and smart TVs
+**Choose Browser Plugin if:** Users want detailed information and easy bypass options
+
+**Choose DNS Server if:** You want network-wide protection for all devices with minimal overhead
 
 ## Security Considerations
 
-- **HTTPS**: The block page server should be placed behind a reverse proxy (nginx, Caddy) with HTTPS in production
-- **Token Security**: The session secret should be a strong, randomly generated string
-- **Rate Limiting**: Consider adding rate limiting for the bypass endpoint
-- **Logging**: Logs include client IPs; ensure compliance with privacy regulations
+- **API Key Security**: Protect your API key in `config.json` (don't commit it to public repos)
+- **Token Secret**: The session secret should be a strong, randomly generated string (use `openssl rand -hex 32`)
+- **Network Access**: Restrict DNS server access to authorized networks using firewall rules
+- **DNS over HTTPS (DoH)**: Clients using DoH will bypass your DNS server; this is expected behavior
+- **Logging**: Logs may contain client IPs and queried domains; ensure compliance with privacy regulations
+- **Upstream DNS**: Choose reputable, privacy-respecting DNS providers as your upstream servers
 
 ## API Integration
 
