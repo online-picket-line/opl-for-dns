@@ -22,4 +22,17 @@ if [[ -z "$GO_BIN" ]]; then
 	exit 127
 fi
 
-"$GO_BIN" test -v ./...
+# Use gotestsum for dot reporter (consistent with other sub-projects).
+# Falls back to plain `go test` when gotestsum is not installed.
+GOTESTSUM=""
+if command -v gotestsum >/dev/null 2>&1; then
+	GOTESTSUM="$(command -v gotestsum)"
+elif [[ -x "${GOPATH:-$HOME/go}/bin/gotestsum" ]]; then
+	GOTESTSUM="${GOPATH:-$HOME/go}/bin/gotestsum"
+fi
+
+if [[ -n "$GOTESTSUM" ]]; then
+	"$GOTESTSUM" --format dots -- ./...
+else
+	"$GO_BIN" test -v ./...
+fi
