@@ -12,19 +12,16 @@ import (
 
 	"github.com/miekg/dns"
 	"github.com/online-picket-line/opl-for-dns/pkg/api"
-	"github.com/online-picket-line/opl-for-dns/pkg/session"
 	"github.com/online-picket-line/opl-for-dns/pkg/stats"
 )
 
 // Server is a DNS server that blocks domains involved in labor disputes.
 type Server struct {
 	listenAddr   string
-	blockPageIP  net.IP
 	upstreamDNS  []string
 	queryTimeout time.Duration
 
 	apiClient      *api.Client
-	sessionManager *session.Manager
 	statsCollector *stats.Collector
 	logger         *slog.Logger
 
@@ -33,19 +30,16 @@ type Server struct {
 }
 
 // NewServer creates a new DNS server.
-func NewServer(listenAddr string, blockPageIP string, upstreamDNS []string, queryTimeout time.Duration, apiClient *api.Client, sessionManager *session.Manager, statsCollector *stats.Collector, logger *slog.Logger) (*Server, error) {
-	ip := net.ParseIP(blockPageIP)
-	if ip == nil {
-		return nil, fmt.Errorf("invalid block page IP: %s", blockPageIP)
+func NewServer(listenAddr string, upstreamDNS []string, queryTimeout time.Duration, apiClient *api.Client, statsCollector *stats.Collector, logger *slog.Logger) (*Server, error) {
+	if listenAddr == "" {
+		return nil, fmt.Errorf("listen address is required")
 	}
 
 	return &Server{
 		listenAddr:     listenAddr,
-		blockPageIP:    ip,
 		upstreamDNS:    upstreamDNS,
 		queryTimeout:   queryTimeout,
 		apiClient:      apiClient,
-		sessionManager: sessionManager,
 		statsCollector: statsCollector,
 		logger:         logger,
 	}, nil
@@ -111,48 +105,48 @@ func (s *Server) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 		clientIP = addr.IP.String()
 	}
 
-	// Check if domain is blocked and client doesn't have bypass
+	// Check if domain is blocked
 	if q.Qtype == dns.TypeA || q.Qtype == dns.TypeAAAA {
 		if item, blocked := s.apiClient.CheckDomain(domain); blocked {
-			// Check if client has a bypass
-			if !s.sessionManager.HasBypass(clientIP, domain) {
-				s.logger.Info("Blocking domain",
-					"domain", domain,
-					"client", clientIP,
-					"employer", item.Employer,
-					"action_type", item.ActionDetails.ActionType,
-				)
-
-				// Return block page IP
-				if q.Qtype == dns.TypeA {
-					rr := &dns.A{
-						Hdr: dns.RR_Header{
-							Name:   q.Name,
-							Rrtype: dns.TypeA,
-							Class:  dns.ClassINET,
-							Ttl:    60,
-						},
-						A: s.blockPageIP.To4(),
-					}
-					m.Answer = append(m.Answer, rr)
-				} else if q.Qtype == dns.TypeAAAA {
-					// For AAAA queries, return NODATA response to avoid issues
-					// The block page server typically only listens on IPv4
-					m.Rcode = dns.RcodeSuccess
-				}
-
-				if s.statsCollector != nil {
-					s.statsCollector.RecordBlock(domain)
-				}
-
-				w.WriteMsg(m)
-				return
-			}
-
-			s.logger.Debug("Client has bypass for blocked domain",
+			s.logger.Info("Blocking domain",
 				"domain", domain,
 				"client", clientIP,
+				"employer", item.Employer,
+				"action_type", item.ActionDetails.ActionType,
 			)
+
+			// Return 0.0.0.0 for A queries, :: for AAAA queries
+			// This causes connections to fail immediately
+			if q.Qtype == dns.TypeA {
+				rr := &dns.A{
+					Hdr: dns.RR_Header{
+						Name:   q.Name,
+						Rrtype: dns.TypeA,
+						Class:  dns.ClassINET,
+						Ttl:    60,
+					},
+					A: net.IPv4zero,
+				}
+				m.Answer = append(m.Answer, rr)
+			} else if q.Qtype == dns.TypeAAAA {
+				rr := &dns.AAAA{
+					Hdr: dns.RR_Header{
+						Name:   q.Name,
+						Rrtype: dns.TypeAAAA,
+						Class:  dns.ClassINET,
+						Ttl:    60,
+					},
+					AAAA: net.IPv6zero,
+				}
+				m.Answer = append(m.Answer, rr)
+			}
+
+			if s.statsCollector != nil {
+				s.statsCollector.RecordBlock(domain)
+			}
+
+			w.WriteMsg(m)
+			return
 		}
 	}
 

@@ -13,10 +13,8 @@ import (
 	"time"
 
 	"github.com/online-picket-line/opl-for-dns/pkg/api"
-	"github.com/online-picket-line/opl-for-dns/pkg/blockpage"
 	"github.com/online-picket-line/opl-for-dns/pkg/config"
 	"github.com/online-picket-line/opl-for-dns/pkg/dns"
-	"github.com/online-picket-line/opl-for-dns/pkg/session"
 	"github.com/online-picket-line/opl-for-dns/pkg/stats"
 )
 
@@ -39,7 +37,6 @@ func main() {
 
 	if *generateConfig {
 		cfg := config.DefaultConfig()
-		cfg.Session.Secret = "change-this-to-a-secure-random-string"
 		if err := cfg.Save("config.example.json"); err != nil {
 			fmt.Fprintf(os.Stderr, "Error generating config: %v\n", err)
 			os.Exit(1)
@@ -91,43 +88,20 @@ func main() {
 		cfg.API.Timeout.Duration,
 	)
 
-	// Create session manager
-	sessionManager := session.NewManager(
-		cfg.Session.Secret,
-		cfg.Session.TokenTTL.Duration,
-	)
-
 	// Create stats collector
 	statsCollector := stats.NewCollector()
 
 	// Create DNS server
 	dnsServer, err := dns.NewServer(
 		cfg.DNS.ListenAddr,
-		cfg.DNS.BlockPageIP,
 		cfg.DNS.UpstreamDNS,
 		cfg.DNS.QueryTimeout.Duration,
 		apiClient,
-		sessionManager,
 		statsCollector,
 		logger.With("component", "dns"),
 	)
 	if err != nil {
 		logger.Error("Error creating DNS server", "error", err)
-		os.Exit(1)
-	}
-
-	// Create block page server
-	blockPageServer, err := blockpage.NewServer(
-		cfg.Web.ListenAddr,
-		cfg.Web.ExternalURL,
-		cfg.Web.DisplayMode,
-		apiClient,
-		sessionManager,
-		statsCollector,
-		logger.With("component", "web"),
-	)
-	if err != nil {
-		logger.Error("Error creating block page server", "error", err)
 		os.Exit(1)
 	}
 
@@ -169,24 +143,6 @@ func main() {
 		}
 	}()
 
-	// Start session cleanup goroutine
-	go func() {
-		ticker := time.NewTicker(cfg.Session.CleanupInterval.Duration)
-		defer ticker.Stop()
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				cleaned := sessionManager.CleanupExpired()
-				if cleaned > 0 {
-					logger.Debug("Cleaned up expired sessions", "count", cleaned)
-				}
-			}
-		}
-	}()
-
 	// Start stats reporter goroutine if enabled
 	if cfg.Stats.Enabled {
 		// Determine instance ID
@@ -213,9 +169,6 @@ func main() {
 			APIKey:     cfg.API.APIKey,
 			Interval:   cfg.Stats.ReportInterval.Duration,
 			Logger:     logger.With("component", "stats"),
-			GetActiveSessions: func() int {
-				return sessionManager.GetActiveSessionCount()
-			},
 			GetBlocklistSize: func() (int, int) {
 				blocklist := apiClient.GetCachedBlocklist()
 				if blocklist == nil {
@@ -233,7 +186,7 @@ func main() {
 	}
 
 	// Start servers
-	errChan := make(chan error, 3)
+	errChan := make(chan error, 2)
 
 	// Start DNS server (UDP)
 	go func() {
@@ -246,13 +199,6 @@ func main() {
 	go func() {
 		if err := dnsServer.StartTCP(); err != nil {
 			errChan <- fmt.Errorf("DNS server (TCP): %w", err)
-		}
-	}()
-
-	// Start block page server
-	go func() {
-		if err := blockPageServer.Start(); err != nil {
-			errChan <- fmt.Errorf("block page server: %w", err)
 		}
 	}()
 
@@ -273,7 +219,6 @@ func main() {
 	// Shutdown servers
 	logger.Info("Stopping servers...")
 	dnsServer.Stop()
-	blockPageServer.Stop()
 
 	logger.Info("Shutdown complete")
 }

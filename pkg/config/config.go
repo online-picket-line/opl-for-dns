@@ -16,12 +16,6 @@ type Config struct {
 	// API configuration for Online Picketline
 	API APIConfig `json:"api"`
 
-	// Web server configuration for block page
-	Web WebConfig `json:"web"`
-
-	// Session configuration for bypass tokens
-	Session SessionConfig `json:"session"`
-
 	// Stats reporting configuration
 	Stats StatsConfig `json:"stats"`
 
@@ -36,9 +30,6 @@ type DNSConfig struct {
 
 	// UpstreamDNS is the list of upstream DNS servers
 	UpstreamDNS []string `json:"upstream_dns"`
-
-	// BlockPageIP is the IP address to return for blocked domains
-	BlockPageIP string `json:"block_page_ip"`
 
 	// CacheTTL is how long to cache DNS responses
 	CacheTTL Duration `json:"cache_ttl"`
@@ -60,33 +51,6 @@ type APIConfig struct {
 
 	// Timeout is the HTTP request timeout
 	Timeout Duration `json:"timeout"`
-}
-
-// WebConfig holds web server settings for the block page.
-type WebConfig struct {
-	// ListenAddr is the address to listen on (e.g., "0.0.0.0:80")
-	ListenAddr string `json:"listen_addr"`
-
-	// ExternalURL is the external URL for the block page (used in redirects)
-	ExternalURL string `json:"external_url"`
-
-	// DisplayMode is the default display mode ("block" or "overlay")
-	DisplayMode string `json:"display_mode"`
-
-	// StaticDir is the directory for static assets
-	StaticDir string `json:"static_dir"`
-}
-
-// SessionConfig holds session management settings.
-type SessionConfig struct {
-	// TokenTTL is how long bypass tokens are valid
-	TokenTTL Duration `json:"token_ttl"`
-
-	// Secret is the secret key for signing tokens
-	Secret string `json:"secret"`
-
-	// CleanupInterval is how often to cleanup expired sessions
-	CleanupInterval Duration `json:"cleanup_interval"`
 }
 
 // LoggingConfig holds logging settings.
@@ -153,7 +117,6 @@ func DefaultConfig() *Config {
 		DNS: DNSConfig{
 			ListenAddr:   "0.0.0.0:53",
 			UpstreamDNS:  []string{"8.8.8.8:53", "8.8.4.4:53"},
-			BlockPageIP:  "127.0.0.1",
 			CacheTTL:     Duration{5 * time.Minute},
 			QueryTimeout: Duration{5 * time.Second},
 		},
@@ -162,17 +125,6 @@ func DefaultConfig() *Config {
 			APIKey:          "",
 			RefreshInterval: Duration{15 * time.Minute},
 			Timeout:         Duration{10 * time.Second},
-		},
-		Web: WebConfig{
-			ListenAddr:  "0.0.0.0:8080",
-			ExternalURL: "http://localhost:8080",
-			DisplayMode: "block",
-			StaticDir:   "./static",
-		},
-		Session: SessionConfig{
-			TokenTTL:        Duration{24 * time.Hour},
-			Secret:          "",
-			CleanupInterval: Duration{1 * time.Hour},
 		},
 		Stats: StatsConfig{
 			Enabled:        false,
@@ -216,9 +168,6 @@ func (c *Config) applyEnvOverrides() {
 	if v := os.Getenv("DNS_LISTEN_ADDR"); v != "" {
 		c.DNS.ListenAddr = v
 	}
-	if v := os.Getenv("BLOCK_PAGE_IP"); v != "" {
-		c.DNS.BlockPageIP = v
-	}
 
 	// API settings
 	if v := os.Getenv("OPL_API_BASE_URL"); v != "" {
@@ -226,25 +175,6 @@ func (c *Config) applyEnvOverrides() {
 	}
 	if v := os.Getenv("OPL_API_KEY"); v != "" {
 		c.API.APIKey = v
-	}
-
-	// Web settings
-	if v := os.Getenv("WEB_LISTEN_ADDR"); v != "" {
-		c.Web.ListenAddr = v
-	}
-	if v := os.Getenv("BLOCK_PAGE_EXTERNAL_URL"); v != "" {
-		c.Web.ExternalURL = v
-	}
-	if v := os.Getenv("DISPLAY_MODE"); v != "" {
-		c.Web.DisplayMode = v
-	}
-	if v := os.Getenv("STATIC_DIR"); v != "" {
-		c.Web.StaticDir = v
-	}
-
-	// Session settings
-	if v := os.Getenv("DNS_SESSION_SECRET"); v != "" {
-		c.Session.Secret = v
 	}
 
 	// Logging settings
@@ -289,17 +219,8 @@ func (c *Config) Validate() error {
 	if len(c.DNS.UpstreamDNS) == 0 {
 		return fmt.Errorf("dns.upstream_dns is required")
 	}
-	if c.DNS.BlockPageIP == "" {
-		return fmt.Errorf("dns.block_page_ip is required")
-	}
 	if c.API.BaseURL == "" {
 		return fmt.Errorf("api.base_url is required")
-	}
-	if c.Web.ListenAddr == "" {
-		return fmt.Errorf("web.listen_addr is required")
-	}
-	if c.Session.Secret == "" {
-		return fmt.Errorf("session.secret is required for security")
 	}
 	return nil
 }

@@ -9,21 +9,17 @@ import (
 
 	"github.com/miekg/dns"
 	"github.com/online-picket-line/opl-for-dns/pkg/api"
-	"github.com/online-picket-line/opl-for-dns/pkg/session"
 )
 
 func TestNewServer(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	apiClient := api.NewClient("https://api.example.com", "", 10*time.Second)
-	sessionMgr := session.NewManager("test-secret", 24*time.Hour)
 
 	server, err := NewServer(
 		"127.0.0.1:5353",
-		"192.168.1.100",
 		[]string{"8.8.8.8:53"},
 		5*time.Second,
 		apiClient,
-		sessionMgr,
 		nil,
 		logger,
 	)
@@ -36,31 +32,27 @@ func TestNewServer(t *testing.T) {
 	}
 }
 
-func TestNewServerInvalidBlockPageIP(t *testing.T) {
+func TestNewServerEmptyListenAddr(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	apiClient := api.NewClient("https://api.example.com", "", 10*time.Second)
-	sessionMgr := session.NewManager("test-secret", 24*time.Hour)
 
 	_, err := NewServer(
-		"127.0.0.1:5353",
-		"invalid-ip",
+		"",
 		[]string{"8.8.8.8:53"},
 		5*time.Second,
 		apiClient,
-		sessionMgr,
 		nil,
 		logger,
 	)
 
 	if err == nil {
-		t.Error("Expected error for invalid block page IP")
+		t.Error("Expected error for empty listen address")
 	}
 }
 
 func TestGetBlockedDomainInfo(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	apiClient := api.NewClient("https://api.example.com", "", 10*time.Second)
-	sessionMgr := session.NewManager("test-secret", 24*time.Hour)
 
 	// Setup blocklist
 	apiClient.SetBlocklistForTesting(&api.Blocklist{
@@ -80,11 +72,9 @@ func TestGetBlockedDomainInfo(t *testing.T) {
 
 	server, _ := NewServer(
 		"127.0.0.1:5353",
-		"192.168.1.100",
 		[]string{"8.8.8.8:53"},
 		5*time.Second,
 		apiClient,
-		sessionMgr,
 		nil,
 		logger,
 	)
@@ -111,15 +101,12 @@ func TestGetBlockedDomainInfo(t *testing.T) {
 func TestServeDNSEmptyQuestion(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	apiClient := api.NewClient("https://api.example.com", "", 10*time.Second)
-	sessionMgr := session.NewManager("test-secret", 24*time.Hour)
 
 	server, _ := NewServer(
 		"127.0.0.1:5353",
-		"192.168.1.100",
 		[]string{"8.8.8.8:53"},
 		5*time.Second,
 		apiClient,
-		sessionMgr,
 		nil,
 		logger,
 	)
