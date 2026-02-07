@@ -24,6 +24,7 @@ func TestNewServer(t *testing.T) {
 		5*time.Second,
 		apiClient,
 		sessionMgr,
+		nil,
 		logger,
 	)
 
@@ -47,6 +48,7 @@ func TestNewServerInvalidBlockPageIP(t *testing.T) {
 		5*time.Second,
 		apiClient,
 		sessionMgr,
+		nil,
 		logger,
 	)
 
@@ -83,6 +85,7 @@ func TestGetBlockedDomainInfo(t *testing.T) {
 		5*time.Second,
 		apiClient,
 		sessionMgr,
+		nil,
 		logger,
 	)
 
@@ -117,6 +120,7 @@ func TestServeDNSEmptyQuestion(t *testing.T) {
 		5*time.Second,
 		apiClient,
 		sessionMgr,
+		nil,
 		logger,
 	)
 

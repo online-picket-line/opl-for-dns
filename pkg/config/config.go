@@ -22,6 +22,9 @@ type Config struct {
 	// Session configuration for bypass tokens
 	Session SessionConfig `json:"session"`
 
+	// Stats reporting configuration
+	Stats StatsConfig `json:"stats"`
+
 	// Logging configuration
 	Logging LoggingConfig `json:"logging"`
 }
@@ -95,6 +98,23 @@ type LoggingConfig struct {
 	Format string `json:"format"`
 }
 
+// StatsConfig holds stats reporting settings.
+type StatsConfig struct {
+	// Enabled controls whether stats reporting is active
+	Enabled bool `json:"enabled"`
+
+	// ReportInterval is how often to send stats reports
+	ReportInterval Duration `json:"report_interval"`
+
+	// InstanceID is a unique identifier for this DNS server instance.
+	// If empty, the hostname will be used.
+	InstanceID string `json:"instance_id"`
+
+	// ReportURL is the URL to POST stats reports to.
+	// Defaults to {api.base_url}/dns-stats/report
+	ReportURL string `json:"report_url"`
+}
+
 // Duration is a wrapper for time.Duration that supports JSON marshaling.
 type Duration struct {
 	time.Duration
@@ -153,6 +173,12 @@ func DefaultConfig() *Config {
 			TokenTTL:        Duration{24 * time.Hour},
 			Secret:          "",
 			CleanupInterval: Duration{1 * time.Hour},
+		},
+		Stats: StatsConfig{
+			Enabled:        false,
+			ReportInterval: Duration{5 * time.Minute},
+			InstanceID:     "",
+			ReportURL:      "",
 		},
 		Logging: LoggingConfig{
 			Level:  "info",
@@ -227,6 +253,17 @@ func (c *Config) applyEnvOverrides() {
 	}
 	if v := os.Getenv("LOG_FORMAT"); v != "" {
 		c.Logging.Format = v
+	}
+
+	// Stats settings
+	if v := os.Getenv("STATS_ENABLED"); v == "true" || v == "1" {
+		c.Stats.Enabled = true
+	}
+	if v := os.Getenv("STATS_INSTANCE_ID"); v != "" {
+		c.Stats.InstanceID = v
+	}
+	if v := os.Getenv("STATS_REPORT_URL"); v != "" {
+		c.Stats.ReportURL = v
 	}
 }
 

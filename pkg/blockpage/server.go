@@ -14,6 +14,7 @@ import (
 
 	"github.com/online-picket-line/opl-for-dns/pkg/api"
 	"github.com/online-picket-line/opl-for-dns/pkg/session"
+	"github.com/online-picket-line/opl-for-dns/pkg/stats"
 )
 
 //go:embed templates/*
@@ -29,6 +30,7 @@ type Server struct {
 	displayMode    string
 	apiClient      *api.Client
 	sessionManager *session.Manager
+	statsCollector *stats.Collector
 	logger         *slog.Logger
 
 	templates *template.Template
@@ -36,7 +38,7 @@ type Server struct {
 }
 
 // NewServer creates a new block page server.
-func NewServer(listenAddr, externalURL, displayMode string, apiClient *api.Client, sessionManager *session.Manager, logger *slog.Logger) (*Server, error) {
+func NewServer(listenAddr, externalURL, displayMode string, apiClient *api.Client, sessionManager *session.Manager, statsCollector *stats.Collector, logger *slog.Logger) (*Server, error) {
 	// Parse templates
 	templates, err := template.ParseFS(templatesFS, "templates/*.html")
 	if err != nil {
@@ -49,6 +51,7 @@ func NewServer(listenAddr, externalURL, displayMode string, apiClient *api.Clien
 		displayMode:    displayMode,
 		apiClient:      apiClient,
 		sessionManager: sessionManager,
+		statsCollector: statsCollector,
 		logger:         logger,
 		templates:      templates,
 	}, nil
@@ -260,6 +263,10 @@ func (s *Server) handleBypass(w http.ResponseWriter, r *http.Request) {
 		"client", clientIP,
 	)
 
+	if s.statsCollector != nil {
+		s.statsCollector.RecordBypass()
+	}
+
 	redirectURL := fmt.Sprintf("https://%s", domain)
 
 	// For GET requests, redirect directly
@@ -332,9 +339,9 @@ func (s *Server) handleCheck(w http.ResponseWriter, r *http.Request) {
 
 // HealthResponse is the response for health check.
 type HealthResponse struct {
-	Status           string `json:"status"`
-	BlocklistLoaded  bool   `json:"blocklistLoaded"`
-	ActiveSessions   int    `json:"activeSessions"`
+	Status             string `json:"status"`
+	BlocklistLoaded    bool   `json:"blocklistLoaded"`
+	ActiveSessions     int    `json:"activeSessions"`
 	LastBlocklistFetch string `json:"lastBlocklistFetch,omitempty"`
 }
 

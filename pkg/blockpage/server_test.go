@@ -45,6 +45,7 @@ func setupTestServer(t *testing.T) (*Server, *api.Client, *session.Manager) {
 		"block",
 		apiClient,
 		sessionMgr,
+		nil,
 		logger,
 	)
 	if err != nil {

@@ -26,6 +26,12 @@
     "secret": "${DNS_SESSION_SECRET}",
     "cleanup_interval": "1h"
   },
+  "stats": {
+    "enabled": true,
+    "report_interval": "5m",
+    "instance_id": "",
+    "report_url": ""
+  },
   "logging": {
     "level": "info",
     "format": "json"

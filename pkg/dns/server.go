@@ -13,6 +13,7 @@ import (
 	"github.com/miekg/dns"
 	"github.com/online-picket-line/opl-for-dns/pkg/api"
 	"github.com/online-picket-line/opl-for-dns/pkg/session"
+	"github.com/online-picket-line/opl-for-dns/pkg/stats"
 )
 
 // Server is a DNS server that blocks domains involved in labor disputes.
@@ -24,6 +25,7 @@ type Server struct {
 
 	apiClient      *api.Client
 	sessionManager *session.Manager
+	statsCollector *stats.Collector
 	logger         *slog.Logger
 
 	server *dns.Server
@@ -31,7 +33,7 @@ type Server struct {
 }
 
 // NewServer creates a new DNS server.
-func NewServer(listenAddr string, blockPageIP string, upstreamDNS []string, queryTimeout time.Duration, apiClient *api.Client, sessionManager *session.Manager, logger *slog.Logger) (*Server, error) {
+func NewServer(listenAddr string, blockPageIP string, upstreamDNS []string, queryTimeout time.Duration, apiClient *api.Client, sessionManager *session.Manager, statsCollector *stats.Collector, logger *slog.Logger) (*Server, error) {
 	ip := net.ParseIP(blockPageIP)
 	if ip == nil {
 		return nil, fmt.Errorf("invalid block page IP: %s", blockPageIP)
@@ -44,6 +46,7 @@ func NewServer(listenAddr string, blockPageIP string, upstreamDNS []string, quer
 		queryTimeout:   queryTimeout,
 		apiClient:      apiClient,
 		sessionManager: sessionManager,
+		statsCollector: statsCollector,
 		logger:         logger,
 	}, nil
 }
@@ -138,6 +141,10 @@ func (s *Server) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 					m.Rcode = dns.RcodeSuccess
 				}
 
+				if s.statsCollector != nil {
+					s.statsCollector.RecordBlock(domain)
+				}
+
 				w.WriteMsg(m)
 				return
 			}
@@ -150,6 +157,9 @@ func (s *Server) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 	}
 
 	// Forward to upstream DNS
+	if s.statsCollector != nil {
+		s.statsCollector.RecordQuery()
+	}
 	s.forwardQuery(w, r, m)
 }
 

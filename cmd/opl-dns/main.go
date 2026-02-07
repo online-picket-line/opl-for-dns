@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/online-picket-line/opl-for-dns/pkg/config"
 	"github.com/online-picket-line/opl-for-dns/pkg/dns"
 	"github.com/online-picket-line/opl-for-dns/pkg/session"
+	"github.com/online-picket-line/opl-for-dns/pkg/stats"
 )
 
 var (
@@ -95,6 +97,9 @@ func main() {
 		cfg.Session.TokenTTL.Duration,
 	)
 
+	// Create stats collector
+	statsCollector := stats.NewCollector()
+
 	// Create DNS server
 	dnsServer, err := dns.NewServer(
 		cfg.DNS.ListenAddr,
@@ -103,6 +108,7 @@ func main() {
 		cfg.DNS.QueryTimeout.Duration,
 		apiClient,
 		sessionManager,
+		statsCollector,
 		logger.With("component", "dns"),
 	)
 	if err != nil {
@@ -117,6 +123,7 @@ func main() {
 		cfg.Web.DisplayMode,
 		apiClient,
 		sessionManager,
+		statsCollector,
 		logger.With("component", "web"),
 	)
 	if err != nil {
@@ -179,6 +186,51 @@ func main() {
 			}
 		}
 	}()
+
+	// Start stats reporter goroutine if enabled
+	if cfg.Stats.Enabled {
+		// Determine instance ID
+		instanceID := cfg.Stats.InstanceID
+		if instanceID == "" {
+			if hostname, err := os.Hostname(); err == nil {
+				instanceID = hostname
+			} else {
+				instanceID = "opl-dns-unknown"
+			}
+		}
+
+		// Determine report URL
+		reportURL := cfg.Stats.ReportURL
+		if reportURL == "" {
+			reportURL = strings.TrimSuffix(cfg.API.BaseURL, "/") + "/dns-stats/report"
+		}
+
+		reporter := stats.NewReporter(stats.ReporterConfig{
+			Collector:  statsCollector,
+			InstanceID: instanceID,
+			Version:    version,
+			ReportURL:  reportURL,
+			APIKey:     cfg.API.APIKey,
+			Interval:   cfg.Stats.ReportInterval.Duration,
+			Logger:     logger.With("component", "stats"),
+			GetActiveSessions: func() int {
+				return sessionManager.GetActiveSessionCount()
+			},
+			GetBlocklistSize: func() (int, int) {
+				blocklist := apiClient.GetCachedBlocklist()
+				if blocklist == nil {
+					return 0, 0
+				}
+				return blocklist.TotalURLs, len(blocklist.Employers)
+			},
+			GetLastRefresh: func() time.Time {
+				return apiClient.LastFetchTime()
+			},
+		})
+
+		go reporter.Start(ctx)
+		logger.Info("Stats reporting enabled", "instanceId", instanceID, "interval", cfg.Stats.ReportInterval.Duration)
+	}
 
 	// Start servers
 	errChan := make(chan error, 3)

@@ -26,6 +26,12 @@
     "secret": "change-this-to-a-secure-random-string",
     "cleanup_interval": "1h0m0s"
   },
+  "stats": {
+    "enabled": false,
+    "report_interval": "5m0s",
+    "instance_id": "",
+    "report_url": ""
+  },
   "logging": {
     "level": "info",
     "format": "text"
