@@ -28,7 +28,7 @@ This enables digital solidarity with workers by making labor disputes visible an
 #### RHEL/CentOS/Fedora
 ```bash
 # Clone the repository
-git clone https://github.com/online-picket-line/opl-for-dns.git
+git clone https://github.com/oplfun/opl-for-dns.git
 cd opl-for-dns
 
 # Build the server
@@ -205,7 +205,6 @@ The OPL DNS server is ideal for:
 - **DNS Caching**: Some devices or networks may cache DNS responses. Clearing DNS cache may be needed for immediate effect
 - **VPN/Proxy Bypass**: Users can bypass DNS blocks using VPNs or proxy servers (this is intentional—we inform, not force)
 - **Configuration Complexity**: Requires server setup and network configuration knowledge
-- **No User Prompts**: Since there's no block page UI, users won't see why access failed (consider adding informational posters or documentation)
 
 ## Development
 
@@ -267,7 +266,7 @@ opl-for-dns/
 
 ## API Integration
 
-The server integrates with the [Online Picket Line API](https://github.com/online-picket-line/online-picketline/blob/main/doc/API_DOCUMENTATION.md). It uses the `/api/blocklist.json` endpoint to fetch the list of domains involved in labor actions.
+The server integrates with the [Online Picket Line API](https://github.com/oplfun/online-picketline/blob/main/opl-vps/doc/API_DOCUMENTATION.md). It uses the `/api/blocklist.json` endpoint to fetch the list of domains involved in labor actions.
 
 ## Contributing
 
@@ -285,7 +284,7 @@ ISC License - See [LICENSE](LICENSE) for details.
 ## Credits
 
 - [Online Picket Line](https://onlinepicketline.com) - The API and labor action database
-- [opl-browser-plugin](https://github.com/online-picket-line/opl-browser-plugin) - Design inspiration
+- [opl-browser-plugin](https://github.com/oplfun/opl-browser-plugin) - Design inspiration
 - [miekg/dns](https://github.com/miekg/dns) - DNS library for Go
 
 ---
